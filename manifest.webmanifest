@@ -1,6 +1,6 @@
 {
-  "name": "Köy ve Çiftlik",
-  "short_name": "Köy ve Çiftlik",
+  "name": "Köyden İndim Şehire",
+  "short_name": "Köyden Şehire",
   "description": "Kendi köyünü kur, çiftliğini büyüt, ailenle adalar arası ticaret yap.",
   "lang": "tr",
   "start_url": "./",
