@@ -1,6 +1,6 @@
 // Köyden İndim Şehire — çevrimdışı açılış ve hızlı yükleme
-const ONBELLEK = 'koy-v2';
-const KABUK = ['./', 'index.html', 'manifest.webmanifest', 'ikon-192.png', 'ikon-512.png', 'ikon-180.png', 'logo.png'];
+const ONBELLEK = 'koy-v3';
+const KABUK = ['./', 'index.html', 'manifest.webmanifest', 'ikon-192.png', 'ikon-512.png', 'ikon-180.png', 'logo.png', 'acilis_ada.webp', 'ikon-maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(ONBELLEK).then(c => c.addAll(KABUK)).catch(() => {}));
