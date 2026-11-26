@@ -1,4 +1,5 @@
 {
+  "id": "/koy-oyunu/",
   "name": "Köyden İndim Şehire",
   "short_name": "Köyden Şehire",
   "description": "Çadırla başla, köyünü kur, tarlanı ek; köyünü kasabaya, kasabanı şehre çevir. Ailenle adalar arası ticaret yap.",
@@ -31,6 +32,33 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "screenshots": [
+    {
+      "src": "ekran-koy.png",
+      "sizes": "1170x2532",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Köyünü kur: kiremit çatılı evler, tarlalar, bahçeler"
+    },
+    {
+      "src": "ekran-kasaba.png",
+      "sizes": "1170x2532",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Kasabaya geçiş: konaklar, asfalt yollar"
+    },
+    {
+      "src": "ekran-sehir.png",
+      "sizes": "1170x2532",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Şehir: siteler, fabrikalar, seralar"
     }
   ]
 }
