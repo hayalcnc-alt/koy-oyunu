@@ -16,6 +16,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Siparişler (web siparisUret/Adim/Teslim/Kim/Max/Aralik birebir), seviye atlama ödülü (xpEkle)
 
 - [x] İş gücü (web hesapla birebir: ev yeri, kuyu +2, emekliler), işçi atama +/−, çalışana göre üretim hızı, oduncu/ocak kendiliğinden odun/taş (k04'te taş +36/dk web ile aynı)
+- [x] Otomatik toplama (otoTopla: tarla, hayvan, atölye, ağaç, kovan) + xp, otomatik üretim (otoUretim: sıra doldurma, yemleme, sipariş önceliği, yedek), toplama binaları (TOPLA), meyve ağaçları (AGAC), dükkân mesaisi, "Otomatik açık/kapalı"
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -26,7 +27,6 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
   - Canlı Firebase'de deneme hesabı açmak kullanıcı onayı bekliyor.
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
 - [ ] Köylü işleri: oduncu, taşçı, inşaatçı köylüler; ağaca/kayaya dokunup odun/taş toplama
-- [ ] Otomatik üretim (otoUretim), toplama binaları (TOPLA: kovan, bahçe, maden…), meyve ağaçları (AGAC)
 - [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
 - [ ] Taşı / yık, çit, lamba
 - [ ] Toplu ekim paneli

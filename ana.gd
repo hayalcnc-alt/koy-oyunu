@@ -207,7 +207,7 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 28)
-	call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
+	call_deferred("hazirla_hepsi"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
 	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
 	web_orman(t)
@@ -1073,6 +1073,7 @@ func ciftlik_eylem(b: Dictionary):
 	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	isci_eylem(b)
+	if b.get("insa") == null: topla_eylem(b)
 	if b.get("insa") != null:
 		var ins: Dictionary = b["insa"]
 		var pb := ProgressBar.new(); pb.max_value = float(ins["top"]); pb.value = float(ins["t"]); pb.show_percentage = false; pb.custom_minimum_size = Vector2(0, 26); eylem_kutu.add_child(pb)
@@ -1139,7 +1140,7 @@ func insa_adim(dt: float):
 		var ins: Dictionary = b["insa"]; ins["t"] = float(ins["t"]) + dt
 		if float(ins["t"]) >= float(ins["top"]):
 			var yeni: bool = int(ins["hedef"]) == 1
-			b["lv"] = int(ins["hedef"]); b["insa"] = null
+			b["lv"] = int(ins["hedef"]); b["insa"] = null; bina_hazirla(b)
 			bina_gorunum(b)
 			var tip: String = b["tip"]; var boy: int = BOY.get(tip, 1)
 			var m := Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI)
@@ -1211,12 +1212,13 @@ func uretim_ekle(b: Dictionary, r: Dictionary):
 	if BINA_BILGI[b["tip"]].get("isci", false): hz = max(1.0, 0.4 + 0.6 * calisan(b))
 	b["kuyruk"].append({"u": r["urun"], "bas": son, "bit": son + float(r["sure"]) * 1000.0 / hz})
 	ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
-func uretim_topla(b: Dictionary):
-	var t := simdi_ms(); var kalan := []
-	for q in b["kuyruk"]:
-		if float(q["bit"]) <= t: env_ekle(q["u"], 1)
-		else: kalan.append(q)
-	b["kuyruk"] = kalan; kayit_yaz_koy(); bina_goster(b)
+func uretim_topla(b: Dictionary): uretim_topla_s(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+func uretim_topla_s(b: Dictionary) -> int:
+	var t := simdi_ms(); var n := 0; var xp := 0.0
+	while b.get("kuyruk", []).size() > 0 and float(b["kuyruk"][0]["bit"]) <= t:
+		var q = b["kuyruk"].pop_front(); env_ekle(q["u"], 1); n += 1; xp += float(VERI["urun"].get(q["u"], {}).get("xp", 0))
+	if n > 0: xp_ekle(xp)
+	return n
 
 func sure_yazi(sn: int) -> String:
 	if sn >= 3600: return "%d sa %d dk" % [sn / 3600, (sn % 3600) / 60]
@@ -1230,17 +1232,36 @@ func ek(b: Dictionary, tip: String):
 	ekin_yenile(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
 # web otoTopla: çiftçiler olgun tarlayı biçer, aynı tohumu yeniden eker (tohum parası düşer)
 var _oto_say := 0
+func hazirla_hepsi():
+	for b in kayit_v.get("b", []): if b.get("insa") == null: bina_hazirla(b)
 func oto_topla():
 	var ek := 0
 	for b in kayit_v.get("b", []):
 		if b["tip"] != "tarla" or b.get("insa") != null or b.get("otoKapali", false) == true: continue
 		if not b.get("ekin") is Dictionary or ekin_asama(b) != 2: continue
 		var tip: String = b["ekin"]["tip"]; env_ekle(tip, 2); b["ekin"] = null; ek += 1
+		xp_ekle(float(VERI["urun"].get(tip, {}).get("xp", 0)) * 2)
 		var e: Dictionary = VERI["ekin"].get(tip, {})
 		if not e.is_empty() and float(kayit_v["res"].get("altin", 0)) >= float(e["tohum"]):
 			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
 			var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0}
 		ekin_yenile(b)
+	if kayit_v.get("otoTopla") != false:
+		for b in kayit_v["b"]:
+			if b.get("insa") != null or b.get("otoKapali", false) == true or b["tip"] == "tarla": continue
+			var t: String = b["tip"]
+			if VERI["hayvan"].has(t) and b.get("hayvan") is Array: ek += hayvan_topla_s(b)
+			elif VERI["tarif"].has(t) and b.get("kuyruk") is Array: ek += uretim_topla_s(b)
+			elif VERI.get("agac", {}).has(t) and b.get("meyve") != null: ek += agac_topla_s(b)
+			elif VERI.get("topla", {}).has(t): ek += kovan_topla_s(b)
+	hesapla(); oto_uretim()
+	if not mesaide():
+		for b in kayit_v["b"]:
+			if not b["tip"] in DUKKAN or b.get("insa") != null: continue
+			if b.get("kovan") is Dictionary: b["kovan"]["son"] = float(b["kovan"]["son"]) + 3000.0
+			for q in b.get("kuyruk", []):
+				if float(q["bas"]) > simdi_ms(): q["bas"] = float(q["bas"]) + 3000.0
+				if float(q["bit"]) > simdi_ms(): q["bit"] = float(q["bit"]) + 3000.0
 	if ek > 0: ust_guncelle(); kayit_yaz_koy()
 func hasat(b: Dictionary):
 	if ekin_asama(b) != 2: return
@@ -1258,11 +1279,90 @@ func besle(b: Dictionary):
 		if int(env.get(H["yem"], 0)) < 1: break
 		env_ekle(H["yem"], -1); h["bit"] = simdi_ms() + float(H["sure"]) * 1000.0
 	kayit_yaz_koy(); bina_goster(b)
-func hayvan_topla(b: Dictionary):
+func hayvan_topla(b: Dictionary): hayvan_topla_s(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+func hayvan_topla_s(b: Dictionary) -> int:
 	var H: Dictionary = VERI["hayvan"][b["tip"]]; var t := simdi_ms(); var n := 0
-	for h in b["hayvan"]:
+	for h in b.get("hayvan", []):
 		if h.get("bit") != null and float(h["bit"]) <= t: h["bit"] = null; n += 1
-	env_ekle(H["urun"], n); kayit_yaz_koy(); bina_goster(b)
+	if n > 0: env_ekle(H["urun"], n); xp_ekle(float(VERI["urun"].get(H["urun"], {}).get("xp", 0)) * n)
+	return n
+# --- ağaç ve kovan (web agacTopla/kovanSay/kovanTopla), DUKKAN mesai dışı bekler
+const DUKKAN := ["kuyumcu", "bakkal", "berber", "elektrikci", "bobinaj", "torna", "cnc", "keresteci", "demirci"]
+func bina_hazirla(b: Dictionary):
+	var t: String = b["tip"]
+	if VERI.get("agac", {}).has(t) and b.get("meyve") == null: b["meyve"] = simdi_ms() + float(VERI["agac"][t]["sure"]) * 1000.0
+	if VERI.get("topla", {}).has(t) and not b.get("kovan") is Dictionary: b["kovan"] = {"son": simdi_ms()}
+	if VERI["tarif"].has(t) and not b.get("kuyruk") is Array: b["kuyruk"] = []
+func topla_sure(b: Dictionary) -> float:
+	var K: Dictionary = VERI["topla"][b["tip"]]
+	var s := float(K["sure"])
+	if BINA_BILGI.get(b["tip"], {}).get("isci", false): s = s / max(1.0, 0.4 + 0.6 * calisan(b))
+	return s
+func kovan_say(b: Dictionary) -> int:
+	if not b.get("kovan") is Dictionary: b["kovan"] = {"son": simdi_ms()}
+	var K: Dictionary = VERI["topla"][b["tip"]]
+	return min(int(K["max"]) + int(b.get("lv", 1)) - 1, int(floor((simdi_ms() - float(b["kovan"]["son"])) / (topla_sure(b) * 1000.0))))
+func kovan_topla_s(b: Dictionary) -> int:
+	var n := kovan_say(b); if n <= 0: return 0
+	var K: Dictionary = VERI["topla"][b["tip"]]; env_ekle(K["urun"], n)
+	b["kovan"]["son"] = simdi_ms() if n >= int(K["max"]) + int(b.get("lv", 1)) - 1 else float(b["kovan"]["son"]) + n * topla_sure(b) * 1000.0
+	xp_ekle(float(VERI["urun"].get(K["urun"], {}).get("xp", 0)) * n); return n
+func agac_topla_s(b: Dictionary) -> int:
+	var A: Dictionary = VERI["agac"][b["tip"]]
+	if b.get("meyve") == null or simdi_ms() < float(b["meyve"]): return 0
+	var g := int(A["adet"]); env_ekle(A["urun"], g)
+	b["meyve"] = simdi_ms() + float(A["sure"]) * 1000.0; xp_ekle(float(VERI["urun"].get(A["urun"], {}).get("xp", 0)) * g); return g
+func topla_eylem(b: Dictionary):
+	var t: String = b["tip"]; var bk := b
+	if VERI.get("topla", {}).has(t):
+		var K: Dictionary = VERI["topla"][t]; var n := kovan_say(b)
+		etiket(eylem_kutu, "Biriken %s: %d/%d" % [urun_ad(K["urun"]).to_lower(), n, int(K["max"]) + int(b.get("lv", 1)) - 1], 26, Color(0.25, 0.17, 0.1))
+		if n > 0: eylem_dugme("Topla (+%d %s)" % [n, urun_ad(K["urun"])], func(): kovan_topla_s(bk); ust_guncelle(); kayit_yaz_koy(); bina_goster(bk))
+	elif VERI.get("agac", {}).has(t):
+		var A: Dictionary = VERI["agac"][t]
+		if b.get("meyve") != null and simdi_ms() >= float(b["meyve"]): eylem_dugme("Topla (+%d %s)" % [int(A["adet"]), urun_ad(A["urun"])], func(): agac_topla_s(bk); ust_guncelle(); kayit_yaz_koy(); bina_goster(bk))
+		else: etiket(eylem_kutu, "Meyveler olgunlaşıyor: %s" % sure_yazi(int(max(0.0, (float(b.get("meyve", simdi_ms())) - simdi_ms()) / 1000.0))), 26, Color(0.25, 0.17, 0.1))
+	if VERI["tarif"].has(t) or VERI["hayvan"].has(t) or VERI.get("topla", {}).has(t) or VERI.get("agac", {}).has(t) or t == "tarla":
+		var kapali: bool = b.get("otoKapali", false) == true
+		eylem_dugme("Otomatik: %s" % ("kapalı" if kapali else "açık"), func(): bk["otoKapali"] = not kapali; kayit_yaz_koy(); bina_goster(bk))
+func mesaide() -> bool: var h := oyun_saati(); return h >= 8 and h < 18
+# web otoUretim: işçisi olan atölye boş sırasını doldurur, hayvanlar ambardaki yemle beslenir (yedek bırakılır)
+var _oto_sira := {}
+func oto_uretim():
+	var istenen := {}
+	for sp in kayit_v.get("siparis", []): for k in sp["istek"]: istenen[k] = true
+	var yedek := func(k): return 15.0 if k in ["altin", "odun", "tas"] else 2.0
+	var yeter_y := func(c):
+		for k in c:
+			if sahip(k) - float(c[k]) < yedek.call(k): return false
+		return true
+	var degisti := false
+	for b in kayit_v["b"]:
+		if b.get("insa") != null or b.get("otoKapali", false) == true: continue
+		var t: String = b["tip"]
+		if VERI["tarif"].has(t):
+			if BINA_BILGI.get(t, {}).get("isci", false) and calisan(b) == 0: continue
+			if not b.get("kuyruk") is Array: b["kuyruk"] = []
+			var g := 0
+			while g < 4 and b["kuyruk"].size() < 2 + int(b.get("lv", 1)):
+				var l := []
+				for r in VERI["tarif"][t]: if int(r.get("lv", 0)) <= klv() and yeter_y.call(r["girdi"]): l.append(r)
+				if l.is_empty(): break
+				var once := l.filter(func(r): return istenen.has(r["urun"]))
+				var havuz: Array = once if once.size() > 0 else l
+				b["otoSira"] = int(b.get("otoSira", 0) if b.get("otoSira") != null else 0) + 1
+				var r: Dictionary = havuz[int(b["otoSira"]) % havuz.size()]
+				for k in r["girdi"]: harca(k, float(r["girdi"][k]))
+				var son := float(b["kuyruk"][-1]["bit"]) if b["kuyruk"].size() > 0 else 0.0
+				var bas: float = max(simdi_ms(), son)
+				b["kuyruk"].append({"u": r["urun"], "bas": bas, "bit": bas + float(r["sure"]) * 1000.0 / max(1.0, 0.4 + 0.6 * calisan(b))})
+				degisti = true; g += 1
+		elif VERI["hayvan"].has(t) and b.get("hayvan") is Array:
+			var H: Dictionary = VERI["hayvan"][t]
+			for h in b["hayvan"]:
+				if h.get("bit") != null or sahip(H["yem"]) - 1 < yedek.call(H["yem"]): continue
+				harca(H["yem"], 1); h["bit"] = simdi_ms() + float(H["sure"]) * 1000.0; degisti = true
+	if degisti: kayit_yaz_koy()
 func ambar_ac():
 	# web ambarCiz: ürün, adet, tane fiyatı; "Sat 1" ve "Hepsi"
 	var env: Dictionary = kayit_v.get("env", {})
