@@ -899,6 +899,11 @@ func arayuz_kur():
 		var kap := CenterContainer.new(); kap.custom_minimum_size = Vector2(150, 150); kap.add_child(bt); alt.add_child(kap)
 		if d[0] == "İNŞA": bt.pressed.connect(insa_ac)
 		if d[0] == "Ambar": bt.pressed.connect(ambar_ac)
+		if d[0] == "Siparişler":
+			bt.pressed.connect(siparis_ac)
+			sip_rozet = Label.new(); sip_rozet.add_theme_font_size_override("font_size", 24); sip_rozet.add_theme_color_override("font_color", Color.WHITE)
+			var rz2 := kutu_stil(Color(0.85, 0.2, 0.15), 20); rz2.content_margin_left = 10; rz2.content_margin_right = 10; rz2.content_margin_top = 0; rz2.content_margin_bottom = 0
+			sip_rozet.add_theme_stylebox_override("normal", rz2); sip_rozet.position = Vector2(cap - 34, -4); sip_rozet.visible = false; bt.add_child(sip_rozet)
 	_kok_cl = cl
 	yer_panel = HBoxContainer.new(); yer_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); yer_panel.offset_top = -300; yer_panel.offset_bottom = -180; yer_panel.alignment = BoxContainer.ALIGNMENT_CENTER; yer_panel.add_theme_constant_override("separation", 20); yer_panel.visible = false; cl.add_child(yer_panel)
 	for d in [["İptal", Color(0.85, 0.35, 0.3)], ["Döndür", Color(0.98, 0.93, 0.82)], ["Yerleştir", Color(0.35, 0.7, 0.35)]]:
@@ -1272,6 +1277,137 @@ func ambar_ac():
 	if anahtar.is_empty():
 		var l := Label.new(); l.text = "Ambar boş."; l.add_theme_font_size_override("font_size", 28); gl.add_child(l)
 
+# --- siparişler: web siparisUret/siparisAdim/siparisTeslim ile aynı kurallar
+const SIP_OMUR := 45 * 60000.0
+var sip_rozet: Label
+func bina_var(t: String) -> bool:
+	for b in kayit_v.get("b", []):
+		if b["tip"] == t and b.get("insa") == null: return true
+	return false
+func klv() -> int: return int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
+func acik_urunler() -> Array:
+	var l := []
+	for e in VERI["ekin"]:
+		if int(VERI["ekin"][e].get("lv", 1)) <= klv(): l.append(e)
+	for t in VERI["hayvan"]:
+		if bina_var(t): l.append(VERI["hayvan"][t]["urun"])
+	for t in VERI["tarif"]:
+		if t != "demirci" and bina_var(t):
+			for r in VERI["tarif"][t]:
+				if int(r.get("lv", 0)) <= klv(): l.append(r["urun"])
+	for t in VERI.get("agac", {}):
+		if bina_var(t): l.append(VERI["agac"][t]["urun"])
+	if bina_var("kovan"): l.append("bal")
+	return l
+func siparis_kim() -> String:
+	var l := ["Komşu köyden Ayşe Teyze", "Komşu köyden Hasan Usta", "Değirmenci Ali", "Kervancı Yusuf", "Yayladan Fatma Hanım", "Seyyar satıcı Rıza"]
+	if bina_var("han"): l.append_array(["Han Sahibi", "Handa konaklayan kervan"])
+	if bina_var("pazar") or bina_var("hal"): l.append_array(["Pazarcı Zeynep", "Haldeki komisyoncu"])
+	for b in kayit_v["b"]:
+		if b["tip"] == "liman": l.append_array(["Gemiyle gelen tüccar", "Limandaki kaptan"]); break
+	if bina_var("otogar"): l.append_array(["Şehirden gelen manav", "Otobüsle gelen tüccar Mehmet"])
+	if bina_var("kahvehane"): l.append("Kahveci Osman")
+	if bina_var("bakkal"): l.append("Bakkal Cemil")
+	var bos := l.filter(func(x): return not kayit_v.get("siparis", []).any(func(sp): return sp["kim"] == x))
+	var h: Array = bos if bos.size() > 0 else l
+	return h[randi() % h.size()]
+func siparis_max() -> int:
+	return 2 + (1 if bina_var("pazar") or bina_var("hal") else 0) + (1 if bina_var("hal") else 0) + (1 if bina_var("otogar") else 0) + (1 if klv() >= 12 else 0)
+func siparis_aralik() -> float:
+	var liman := false
+	for b in kayit_v["b"]: if b["tip"] == "liman": liman = true
+	var k := 1.0 + (0.25 if bina_var("pazar") else 0.0) + (0.25 if bina_var("hal") else 0.0) + (0.2 if bina_var("otogar") else 0.0) + (0.15 if liman else 0.0)
+	return round(4 * 60000.0 / k * (0.75 + randf() * 0.5))
+func siparis_uret():
+	var l := acik_urunler(); l.shuffle()
+	var tur: int = min(l.size(), 1 + int(floor(randf() * min(3.0, 1.0 + klv() / 3.0))))
+	var istek := {}; var altin := 5.0; var xp := 1.0
+	for k in l.slice(0, tur):
+		var n: int = (2 + randi() % 5) if VERI["ekin"].has(k) else (1 + randi() % 3)
+		istek[k] = n; var u: Dictionary = VERI["urun"].get(k, {"fiyat": 1, "xp": 1})
+		altin += float(u.get("fiyat", 1)) * n * 1.5; xp += float(u.get("xp", 1)) * n * 1.2
+	kayit_v["sipSayac"] = int(kayit_v.get("sipSayac", 0) if kayit_v.get("sipSayac") != null else 0) + 1
+	kayit_v["siparis"].append({"id": kayit_v["sipSayac"], "kim": siparis_kim(), "istek": istek, "altin": round(altin), "xp": round(xp), "bitis": simdi_ms() + SIP_OMUR})
+func yeter_hepsi(c: Dictionary) -> bool:
+	for k in c: if sahip(k) < float(c[k]): return false
+	return true
+func siparis_adim():
+	if kayit_v.is_empty() or VERI.is_empty(): return
+	if not kayit_v.get("siparis") is Array: kayit_v["siparis"] = []
+	var t := simdi_ms(); var degisti := false
+	for sp in kayit_v["siparis"]: if sp.get("bitis") == null: sp["bitis"] = t + SIP_OMUR
+	var giden: Array = kayit_v["siparis"].filter(func(sp): return float(sp["bitis"]) <= t)
+	if giden.size() > 0: kayit_v["siparis"] = kayit_v["siparis"].filter(func(sp): return float(sp["bitis"]) > t); degisti = true
+	if kayit_v.get("sipSonraki") == null: kayit_v["sipSonraki"] = t + (siparis_aralik() if kayit_v["siparis"].size() > 0 else 20000.0)
+	if t >= float(kayit_v["sipSonraki"]):
+		if kayit_v["siparis"].size() < siparis_max() and acik_urunler().size() > 0: siparis_uret(); degisti = true
+		kayit_v["sipSonraki"] = t + siparis_aralik()
+	var n := 0
+	for sp in kayit_v["siparis"]: if yeter_hepsi(sp["istek"]): n += 1
+	if sip_rozet: sip_rozet.text = str(n); sip_rozet.visible = n > 0
+	if degisti:
+		kayit_yaz_koy()
+		if insa_panel and insa_panel.name == "siparis": siparis_ac()
+func xp_gerek(l: int) -> int: return int(round(12 * pow(l, 1.6)))
+func xp_ekle(n: float):
+	if n <= 0: return
+	kayit_v["xp"] = float(kayit_v.get("xp", 0) if kayit_v.get("xp") != null else 0) + n
+	while float(kayit_v["xp"]) >= xp_gerek(klv()):
+		kayit_v["xp"] = float(kayit_v["xp"]) - xp_gerek(klv()); kayit_v["lv"] = klv() + 1
+		var odul := 10 * klv(); kayit_v["res"]["altin"] = float(kayit_v["res"].get("altin", 0)) + odul
+		bildir("Seviye %d! Ödül: +%d altın" % [klv(), odul])
+func siparis_teslim(id):
+	for sp in kayit_v["siparis"]:
+		if sp["id"] == id:
+			if not yeter_hepsi(sp["istek"]): return
+			for k in sp["istek"]: harca(k, float(sp["istek"][k]))
+			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + float(sp["altin"])
+			kayit_v["siparis"].erase(sp)
+			bildir("%s memnun! +%d altın, +%d tecrübe" % [sp["kim"], int(sp["altin"]), int(sp["xp"])])
+			xp_ekle(float(sp["xp"])); ust_guncelle(); kayit_yaz_koy(); siparis_adim(); siparis_ac(); return
+func panel_ac(baslik: String, ad: String) -> VBoxContainer:
+	if insa_panel: insa_panel.queue_free()
+	bilgi_panel.visible = false
+	insa_panel = PanelContainer.new(); insa_panel.name = ad; insa_panel.set_anchors_preset(Control.PRESET_FULL_RECT); insa_panel.offset_top = 300; insa_panel.offset_bottom = -190; insa_panel.offset_left = 16; insa_panel.offset_right = -16
+	insa_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.98), 26)); _kok_cl.add_child(insa_panel)
+	var vb := VBoxContainer.new(); insa_panel.add_child(vb)
+	var ust := HBoxContainer.new(); vb.add_child(ust)
+	var bl := Label.new(); bl.text = baslik; bl.add_theme_font_size_override("font_size", 42); bl.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bl)
+	var kp := Button.new(); kp.text = " X "; kp.add_theme_font_size_override("font_size", 32); kp.pressed.connect(func(): insa_panel.queue_free(); insa_panel = null); ust.add_child(kp)
+	var sc := ScrollContainer.new(); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; vb.add_child(sc)
+	var liste := VBoxContainer.new(); liste.size_flags_horizontal = Control.SIZE_EXPAND_FILL; liste.add_theme_constant_override("separation", 12); sc.add_child(liste)
+	return liste
+func etiket(ata: Control, yazi: String, boy := 26, renk := Color(0.3, 0.22, 0.15)) -> Label:
+	var l := Label.new(); l.text = yazi; l.add_theme_font_size_override("font_size", boy); l.add_theme_color_override("font_color", renk); l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; ata.add_child(l); return l
+func siparis_ac():
+	if kayit_v.is_empty(): return
+	if not kayit_v.get("siparis") is Array: kayit_v["siparis"] = []
+	var liste := panel_ac("Siparişler", "siparis")
+	for sp in kayit_v["siparis"]:
+		var ok := yeter_hepsi(sp["istek"])
+		var kart := PanelContainer.new(); kart.add_theme_stylebox_override("panel", kutu_stil(Color(0.86, 0.95, 0.8) if ok else Color(0.96, 0.92, 0.84), 18)); liste.add_child(kart)
+		var v := VBoxContainer.new(); kart.add_child(v)
+		var kal: int = max(1, int(ceil((float(sp["bitis"]) - simdi_ms()) / 60000.0)))
+		etiket(v, "%s   ·   %d dk" % [sp["kim"], kal], 28, Color(0.25, 0.17, 0.1))
+		var parca := []
+		for k in sp["istek"]: parca.append("%s %d/%d" % [urun_ad(k), int(min(sahip(k), float(sp["istek"][k]))), int(sp["istek"][k])])
+		etiket(v, ", ".join(parca))
+		etiket(v, "Ödül: %d altın · %d tecrübe" % [int(sp["altin"]), int(sp["xp"])], 26, Color(0.55, 0.4, 0.05))
+		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 12); v.add_child(h)
+		var id = sp["id"]
+		var bt := Button.new(); bt.text = "Teslim et"; bt.add_theme_font_size_override("font_size", 26); bt.disabled = not ok; bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bt.pressed.connect(func(): siparis_teslim(id)); h.add_child(bt)
+		var sl := Button.new(); sl.text = "Reddet"; sl.add_theme_font_size_override("font_size", 26); sl.pressed.connect(func(): kayit_v["siparis"] = kayit_v["siparis"].filter(func(x): return x["id"] != id); kayit_yaz_koy(); siparis_ac()); h.add_child(sl)
+	var son := "Liste dolu; teslim ettikçe yeni müşteri gelir." if kayit_v["siparis"].size() >= siparis_max() else "Sıradaki müşteri %d dk içinde gelir." % max(1, int(ceil((float(kayit_v.get("sipSonraki", simdi_ms())) - simdi_ms()) / 60000.0)))
+	etiket(liste, son, 24, Color(0.45, 0.38, 0.3))
+# kısa bildirim (web toast)
+var _bildirim: Label
+func bildir(yazi: String):
+	if _bildirim == null:
+		_bildirim = Label.new(); _bildirim.add_theme_font_size_override("font_size", 28); _bildirim.add_theme_color_override("font_color", Color.WHITE)
+		_bildirim.add_theme_stylebox_override("normal", kutu_stil(Color(0.15, 0.1, 0.06, 0.88), 22)); _bildirim.set_anchors_preset(Control.PRESET_TOP_WIDE); _bildirim.offset_top = 210; _bildirim.offset_left = 30; _bildirim.offset_right = -30
+		_bildirim.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; _bildirim.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _kok_cl.add_child(_bildirim)
+	_bildirim.text = yazi; _bildirim.visible = true; _bildirim.modulate.a = 1.0
+	var tw := create_tween(); tw.tween_interval(2.4); tw.tween_property(_bildirim, "modulate:a", 0.0, 0.4)
 func ust_guncelle():
 	if ust_etiket == null: return
 	if kayit_v.is_empty(): ust_etiket.text = "Köy · 42 kişi    Odun 120   Taş 80   Altın 65"; return
@@ -1402,7 +1538,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insa_adim(1.0); cubuk_guncelle(); _oto_say += 1
+			insa_adim(1.0); cubuk_guncelle(); siparis_adim(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -1431,6 +1567,13 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 12 and OS.get_cmdline_user_args().has("--sip"):
+		siparis_adim(); while kayit_v["siparis"].size() < 3: siparis_uret()
+		# test: ilk siparişi karşılayacak kadar malı ambara koy
+		if OS.get_cmdline_user_args().has("--teslim"):
+			var sp = kayit_v["siparis"][0]; for k in sp["istek"]: env_ekle(k, int(sp["istek"][k]))
+			var once := float(kayit_v["res"]["altin"]); siparis_teslim(sp["id"]); print("TESLIM altin ", once, " -> ", kayit_v["res"]["altin"], " xp ", kayit_v.get("xp"), " kalan ", kayit_v["siparis"].size())
+		siparis_adim(); siparis_ac()
 	if kare == 12 and sec_arg >= 0:
 		for b in kayit_v["b"]:
 			if int(b["id"]) == sec_arg: bina_goster(b)
