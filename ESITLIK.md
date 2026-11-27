@@ -38,7 +38,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
 - [x] Köylü işleri: köylü sayısı iş gücü kadar (en çok 40), iş yeri slotları sırayla (k.is, dükkânlar mesai dışı boş), işçi işyerine gidip çalışır/eve uğrar, balıkçı olta tutar; oduncu işçileri agacBul ile çevredeki ağacı keser, keresteciye/oduncuya taşır (12+3·lv); kütük çürüyünce kıyıda fidan, fidan 150 sn sonra ağaç; kapalıyken geçen süre odun/taş (yokkenGecen, en çok 4 saat)
 - [ ] Memnuniyette makine işsizliği (tarimDurum), sanayi dumanı (sanayiDenge), çöp, yangın, cenaze yası
-- [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
+- [x] Aşamalar: Oba → Mezra → Köy → Kasaba (2.000) → İlçe (10.000) → Şehir (50.000), yalnız nüfusa bağlı; nüfus konut kapasitesine doğru yavaşça büyür (halkAdim, memnuniyet hızlandırır); geçişte tebrik penceresi + gazete, evler kasaba/şehir modeline döner, kasabada apartman 5 kat; üstteki ad/nüfus çipine dokununca “Sıradaki hedef” penceresi. Not: göç (gocKontrol) ve yeni gelen aile karşılaması henüz yok
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
 - [x] Olaylar/hikâyeler (web OLAYLAR: 18 olay, en sık 15 dakikada bir, iki seçenek, ceza yok, tek seferlikler bir kez) + sabah gazetesi (dünün olayları, 7-12 arası, son 8 satır). Not: web’deki olayın köyde sahnelenmesi (işaret, katılan köylüler, dokunulmazsa kendi seyri) henüz yok; Godot’da doğrudan seçim penceresi açılıyor
 - [ ] Rehberin ilk açılış (çadır→kuyu→tarla→ev) adımları ve dayıbaşı/bayi/benzinlik önerileri; teraslı ev inşası (glb yok)

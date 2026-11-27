@@ -1122,6 +1122,7 @@ func arayuz_kur():
 	ust_lv = Label.new(); ust_lv.add_theme_font_size_override("font_size", 30); ust_lv.add_theme_color_override("font_color", Color(0.25, 0.16, 0.04)); rz.add_child(ust_lv)
 	var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cip_stil()); r1.add_child(p)
 	ust_etiket = Label.new(); ust_etiket.add_theme_font_size_override("font_size", 27); ust_etiket.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); p.add_child(ust_etiket)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP; p.gui_input.connect(func(o): if (o is InputEventMouseButton and o.pressed) or (o is InputEventScreenTouch and o.pressed): hedef_ac())
 	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 8); ustv.add_child(r2)
 	for k in ["altin", "odun", "tas", "nufus"]: ust_cip[k] = cip_yap(r2, k)
 	var sp := PanelContainer.new(); sp.add_theme_stylebox_override("panel", cip_stil()); sp.set_anchors_preset(Control.PRESET_TOP_RIGHT); sp.offset_left = -300; sp.offset_right = -14; sp.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sp.offset_top = 14; cl.add_child(sp)
@@ -1194,8 +1195,11 @@ func maliyet_yazi(cost: Dictionary) -> String:
 	return ", ".join(l)
 
 var aktif_kat := "koy"
-func kasaba_mi() -> bool: return kayit_v.get("kasaba", false) == true
-func ilce_mi() -> bool: return kayit_v.get("ilce", false) == true
+func max_lv(b: Dictionary) -> int:
+	if b["tip"] == "apartman" and kasaba_mi(): return 5
+	return int(BINA_BILGI.get(b["tip"], {}).get("maxlv", 1))
+func kasaba_mi() -> bool: return kayit_v.get("kasaba", false) == true or nufus_say() >= KASABA_NUFUS
+func ilce_mi() -> bool: return kayit_v.get("ilce", false) == true or (kasaba_mi() and nufus_say() >= ILCE_NUFUS)
 func kat_binasi(kat: String, t: String) -> bool:
 	for k in VERI.get("kategori", []):
 		if k[0] == kat: return t in k[2]
@@ -1441,7 +1445,7 @@ func bina_kaldir_dunya(b: Dictionary):
 func bina_ciz_tek(b: Dictionary):
 	var tip: String = b["tip"]; var m := bina_merkez(b)
 	var model := tip
-	if tip == "ev" and kayit_v.get("kasaba", false) == true: model = "evsehir" if kayit_v.get("sehir", false) == true else "evkasaba"
+	if tip == "ev" and kasaba_mi(): model = "evsehir" if sehir_mi() else "evkasaba"
 	if not FileAccess.file_exists("res://modeller/%s.glb" % model): return
 	bina_koy_dunya(model, m, int(b.get("rot", 0)), int(b["id"])); bina_gorunum(b)
 	if b.get("insa") != null and int(b["insa"].get("hedef", 1)) == 1: return
@@ -1545,7 +1549,7 @@ func ciftlik_eylem(b: Dictionary):
 		var pb := ProgressBar.new(); pb.max_value = float(ins["top"]); pb.value = float(ins["t"]); pb.show_percentage = false; pb.custom_minimum_size = Vector2(0, 26); eylem_kutu.add_child(pb)
 		eylem_dugme("%s… %s kaldı" % ["Yükseltiliyor" if int(ins["hedef"]) > 1 else "İnşa ediliyor", sure_yazi(int(ceil(float(ins["top"]) - float(ins["t"]))))], func(): pass, false)
 		return
-	var ml := int(BINA_BILGI.get(b["tip"], {}).get("maxlv", 1))
+	var ml := max_lv(b)
 	if int(b.get("lv", 1)) < ml:
 		var c := yuk_maliyet(b["tip"], int(b.get("lv", 1)) + 1); var bb := b
 		var yt := true
@@ -2421,6 +2425,82 @@ func olay_adim():
 			_modal.queue_free(); _modal = null; bt[0][1].call(); print("OLAY ", kayit_v["gazete"][-1], " mutlu ", kayit_v.get("olayMutlu"))
 		return
 var _olay_zorlandi := false
+var _halk_say := 0
+# --- aşamalar: web statuAdi/kasabaMi/ilceMi/sehirMi/halkAdim/sonrakiHedef — Oba → Mezra → Köy → Kasaba → İlçe → Şehir (yalnız nüfusa bağlı; binalar önerilir)
+const KASABA_NUFUS := 2000
+const ILCE_NUFUS := 10000
+const SEHIR_NUFUS := 50000
+const KASABA_BINA := [["muhtar", "Muhtarlık"], ["okul", "Okul"], ["cami", "Cami"], ["pazar", "Pazar"]]
+const ILCE_BINA := [["belediye", "Belediye"], ["lise", "Lise"], ["saglik", "Sağlık Ocağı"], ["karakol", "Polis Karakolu"]]
+const SEHIR_BINA := [["hastane", "Devlet Hastanesi"], ["universite", "Üniversite"], ["stadyum", "Stadyum"], ["esnafodasi", "Esnaf Odası"]]
+const GOC_SINIR := 40
+func sehir_mi() -> bool: return kayit_v.get("sehir", false) == true or (ilce_mi() and nufus_say() >= SEHIR_NUFUS)
+func statu_adi() -> String:
+	var n := nufus_say()
+	if sehir_mi(): return "Şehir"
+	if ilce_mi(): return "İlçe"
+	if kasaba_mi(): return "Kasaba"
+	return "Oba" if n < 15 else ("Mezra" if n < 80 else "Köy")
+func ev_kapasite(b: Dictionary) -> int:
+	if b.get("insa") != null: return 0
+	var lv := int(b.get("lv", 1)); var t: String = b["tip"]; var c := 0
+	if t == "cadir": c = 4
+	elif t == "ev" or t == "teras": c = 4 + 4 * lv
+	elif t == "apartman": c = 30 * lv
+	elif t == "site": c = 400 * lv
+	elif t == "rezidans": c = 2000 * lv
+	elif t == "lojman": c = 5
+	return int(ceil(c / 2.0)) if b.get("hasar", false) == true else c
+func nufus_kapasite() -> int:
+	var t := 0
+	for b in kayit_v["b"]: t += ev_kapasite(b)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--kapek="): t += int(a.substr(8))  # test: ek konut kapasitesi
+	return t
+func halk_adim():
+	# her 2 saniyede nüfus kapasiteye doğru yavaşça büyür; memnuniyet hızlandırır
+	var kap := nufus_kapasite(); var isim := (kayit_v.get("nufus", []) as Array).size()
+	if kayit_v.get("halk") == null: kayit_v["halk"] = max(isim, round(kap * 0.85))
+	var h := float(kayit_v["halk"])
+	if h < isim: h = isim
+	if h > kap: h = max(isim, kap)
+	elif h < kap:
+		var mp := memnun_puan()
+		if mp >= GOC_SINIR or nufus_say() < 80: h = min(float(kap), h + max(0.02, (kap - h) * 0.003) * (0.4 + mp / 80.0))
+	kayit_v["halk"] = h
+	statu_kontrol()
+func ev_yeniden_ciz():
+	for b in kayit_v["b"]:
+		if b["tip"] == "ev": bina_kaldir_dunya(b); bina_ciz_tek(b)
+func statu_kontrol():
+	if _modal != null: return
+	var ad: String = str(kayit_v.get("ad", "")) if kayit_v.get("ad") != null else ""
+	if kayit_v.get("ilce", false) == true and kayit_v.get("sehir", false) != true and sehir_mi():
+		kayit_v["sehir"] = true; kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s artık bir şehir! Köyden indik, şehre vardık." % (ad if ad != "" else "İlçemiz"))
+		modal_ac("Tebrikler, artık bir şehirsin!", ["Nüfusun %s oldu." % noktali(nufus_say()), "Bir çadırla başlayan oba; mezra, köy, kasaba, ilçe derken koca bir şehir oldu. Köyden indin, şehre vardın!"], [["Harika!", func(): pass]])
+	elif kayit_v.get("kasaba", false) == true and kayit_v.get("ilce", false) != true and nufus_say() >= ILCE_NUFUS:
+		kayit_v["ilce"] = true; kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s artık bir ilçe!" % (ad if ad != "" else "Kasabamız"))
+		modal_ac("Tebrikler, artık ilçesin!", ["Nüfusun %s oldu." % noktali(nufus_say()), "İnşa → İlçe bölümü açıldı: Esnaf Odası ve Rezidans (her seviye 2000 kişi). Şehir olmak için nüfusu rezidanslarla büyüt."], [["Harika!", func(): pass]])
+	elif kayit_v.get("kasaba", false) != true and nufus_say() >= KASABA_NUFUS:
+		kayit_v["kasaba"] = true; kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s nüfusu %s oldu, artık kasaba!" % [ad if ad != "" else "Köyümüz", noktali(nufus_say())])
+		modal_ac("Tebrikler, artık kasabasın!", ["Nüfusun %s oldu." % noktali(nufus_say()), "İnşa → Kasaba bölümü açıldı: belediye, lise, sağlık ocağı, itfaiye, karakol, otogar, fabrika, asfalt yol ve Konut Sitesi (her seviye 400 kişi).", "Apartmanlar artık 5 kata kadar büyüyebilir."], [["Harika!", func(): pass]])
+func hedef_ac():
+	var n := nufus_say(); var kap := nufus_kapasite(); var ad := statu_adi(); var h := {}
+	if ad == "Oba": h = {"ad": "Mezra", "nuf": 15, "bina": [], "ipucu": "Ev kur, aile büyüsün; akrabalar gelip yerleşir."}
+	elif ad == "Mezra": h = {"ad": "Köy", "nuf": 80, "bina": [], "ipucu": "Evleri çoğalt ve büyüt (her seviye +4 kişi)."}
+	elif ad == "Köy": h = {"ad": "Kasaba", "nuf": KASABA_NUFUS, "bina": KASABA_BINA, "ipucu": "Köy Apartmanı kur (kat başına 30 kişi), evleri 6. seviyeye çıkar."}
+	elif ad == "Kasaba": h = {"ad": "İlçe", "nuf": ILCE_NUFUS, "bina": ILCE_BINA, "ipucu": "Konut Sitesi kur (seviye başına 400 kişi), apartmanları 5 kata çıkar."}
+	elif ad == "İlçe": h = {"ad": "Şehir", "nuf": SEHIR_NUFUS, "bina": SEHIR_BINA, "ipucu": "Rezidans kur (seviye başına 2000 kişi); hastane, üniversite, stadyum yap."}
+	else:
+		modal_ac("Koca bir şehir oldun!", ["Bir çadırla başlayan yolculuk şehirde bitti. Nüfusun %s." % noktali(n)], [["Tamam", func(): pass]]); return
+	var ek := {"Oba": "sın", "Mezra": "sın", "Köy": "sün", "Kasaba": "sın", "İlçe": "sin"}
+	var sat := ["Şu an %s%s. Genel ilerleme %%%d." % [ad, ek.get(ad, "sın"), int(round(min(1.0, float(n) / h["nuf"]) * 100))], "Nüfus %s / %s" % [noktali(n), noktali(h["nuf"])]]
+	if not (h["bina"] as Array).is_empty():
+		sat.append("Önerilen binalar (şart değil, nüfus %s olunca kendiliğinden %s olursun):" % [noktali(h["nuf"]), str(h["ad"]).to_lower()])
+		for x in h["bina"]: sat.append("• %s (%s)" % [x[1], "var" if bina_var(x[0]) else "yok"])
+	if kap < int(h["nuf"]): sat.append("Evlerin en çok %s kişi alıyor. %s kişiye ulaşmak için daha çok konut gerek." % [noktali(kap), noktali(h["nuf"])])
+	sat.append("İpucu: " + h["ipucu"])
+	modal_ac("Sıradaki hedef: " + h["ad"], sat, [["Tamam", func(): pass]])
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
@@ -2505,10 +2585,11 @@ func ust_guncelle():
 	if ust_etiket == null: return
 	if kayit_v.is_empty(): ust_etiket.text = "Köy · 42 kişi    Odun 120   Taş 80   Altın 65"; return
 	var res: Dictionary = kayit_v.get("res", {})
-	var asama := "Şehir" if kayit_v.get("sehir", false) == true else ("İlçe" if kayit_v.get("ilce", false) == true else ("Kasaba" if kayit_v.get("kasaba", false) == true else "Köy"))
+	var asama := statu_adi()
 	var ad: String = str(kayit_v.get("ad", "")) if kayit_v.get("ad") != null else ""
 	var nf: int = max((kayit_v.get("nufus", []) as Array).size(), int(floor(float(kayit_v.get("halk", 0) if kayit_v.get("halk") != null else 0))))
 	ust_etiket.text = "%s%s · %s kişi" % [(ad + " " if ad != "" else ""), asama, noktali(nf)]
+	ust_etiket.add_theme_font_size_override("font_size", 27 if ust_etiket.text.length() <= 22 else (24 if ust_etiket.text.length() <= 25 else 21))
 	ust_lv.text = str(int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1))
 	ust_cip["altin"].text = kisalt(float(res.get("altin", 0))); ust_cip["odun"].text = kisalt(float(res.get("odun", 0))); ust_cip["tas"].text = kisalt(float(res.get("tas", 0))); ust_cip["nufus"].text = kisalt(float(nf))
 	saat_guncelle()
@@ -2534,7 +2615,7 @@ func cip_yap(ata: Control, ad: String) -> Label:
 func bina_goster(b: Dictionary):
 	hesapla()
 	var bb: Dictionary = BINA_BILGI.get(b["tip"], {"ad": b["tip"], "acik": "", "maxlv": 1})
-	var lv := int(b.get("lv", 1)); var ml := int(bb.get("maxlv", 1))
+	var lv := int(b.get("lv", 1)); var ml := max_lv(b)
 	var yildiz := ""
 	if ml > 1: yildiz = "   " + "★".repeat(min(lv, 6)) + "☆".repeat(max(0, min(ml, 6) - lv))
 	bilgi_baslik.text = str(bb["ad"]) + yildiz
@@ -2874,7 +2955,9 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			if _halk_say % 2 == 0: halk_adim()
+			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
