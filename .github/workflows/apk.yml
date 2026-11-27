@@ -3,6 +3,8 @@ on:
   push:
     branches: [godot]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -39,3 +41,8 @@ jobs:
           ls -la build
       - uses: actions/upload-artifact@v4
         with: { name: koy-deneme-apk, path: build/koy-deneme.apk }
+      - name: Sürüm sayfasına koy (indirilebilir bağlantı)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          gh release delete godot-deneme -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create godot-deneme build/koy-deneme.apk -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease -t "Godot deneme APK" -n "Sadece deneme içindir; Play Store sürümü değildir."
