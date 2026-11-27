@@ -1137,6 +1137,10 @@ func arayuz_kur():
 	var ks := cip_stil(); ust_keyif.add_theme_stylebox_override("normal", ks); ust_keyif.add_theme_stylebox_override("hover", ks); ust_keyif.add_theme_stylebox_override("pressed", ks)
 	ust_keyif.set_anchors_preset(Control.PRESET_TOP_RIGHT); ust_keyif.offset_left = -200; ust_keyif.offset_right = -14; ust_keyif.offset_top = 70; ust_keyif.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	ust_keyif.pressed.connect(memnun_ac); cl.add_child(ust_keyif)
+	var ab := Button.new(); ab.icon = load("res://ikon/ayar.svg"); ab.expand_icon = true; ab.custom_minimum_size = Vector2(64, 64)
+	ab.add_theme_stylebox_override("normal", ks); ab.add_theme_stylebox_override("hover", ks); ab.add_theme_stylebox_override("pressed", ks)
+	ab.set_anchors_preset(Control.PRESET_TOP_RIGHT); ab.offset_left = -78; ab.offset_right = -14; ab.offset_top = 126; ab.offset_bottom = 190; ab.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ab.pressed.connect(ayar_ac); cl.add_child(ab)
 	ust_guncelle()
 	# alt menü: Siparişler, İNŞA, Ambar (şimdilik görsel)
 	var alt := HBoxContainer.new(); alt.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); alt.offset_top = -150; alt.offset_bottom = -30; alt.alignment = BoxContainer.ALIGNMENT_CENTER; alt.add_theme_constant_override("separation", 26); cl.add_child(alt)
@@ -1380,7 +1384,8 @@ func yerlestir_onay():
 		bina_kaldir_dunya(b); b["x"] = hayalet_karo.x; b["z"] = hayalet_karo.y; b["rot"] = hayalet_rot
 		if b["tip"] in ["cit", "lamba"]: yol_yenile(); yerlestir_iptal(); kayit_yaz_koy(); return
 		karo_isle(b, true); bina_ciz_tek(b); yerlestir_iptal(); hesapla(); kayit_yaz_koy(); bildir("%s taşındı" % bb["ad"]); return
-	if not yer_uygun(hayalet_karo.x, hayalet_karo.y, bx) or not yeter(bb.get("cost", {})): return
+	if not yer_uygun(hayalet_karo.x, hayalet_karo.y, bx) or not yeter(bb.get("cost", {})): ses("hata"); return
+	ses("insa")
 	var res: Dictionary = kayit_v["res"]
 	for kk in bb.get("cost", {}): harca(kk, float(bb["cost"][kk]))
 	var yid := 1
@@ -1468,6 +1473,7 @@ func yik_sor(b: Dictionary):
 	eylem_dugme("Evet, yık", func(): bina_yik(bk))
 	eylem_dugme("Vazgeç", func(): bina_goster(bk))
 func bina_yik(b: Dictionary):
+	ses("yik")
 	var iade := {}
 	var ekl := func(c: Dictionary):
 		for r in c: iade[r] = int(iade.get(r, 0)) + int(floor(float(c[r]) / 2.0))
@@ -1634,7 +1640,7 @@ func insa_adim(dt: float):
 		var ins: Dictionary = b["insa"]; ins["t"] = float(ins["t"]) + dt * hz
 		if float(ins["t"]) >= float(ins["top"]):
 			var yeni: bool = int(ins["hedef"]) == 1
-			b["lv"] = int(ins["hedef"]); b["insa"] = null; bina_hazirla(b)
+			b["lv"] = int(ins["hedef"]); b["insa"] = null; bina_hazirla(b); ses("tamam")
 			bina_gorunum(b)
 			var tip: String = b["tip"]; var boy: int = BOY.get(tip, 1)
 			var m := Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI)
@@ -2190,7 +2196,7 @@ func siparis_teslim(id):
 			for k in sp["istek"]: harca(k, float(sp["istek"][k]))
 			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + float(sp["altin"])
 			kayit_v["siparis"].erase(sp)
-			bildir("%s memnun! +%d altın, +%d tecrübe" % [sp["kim"], int(sp["altin"]), int(sp["xp"])])
+			ses("gorev"); bildir("%s memnun! +%d altın, +%d tecrübe" % [sp["kim"], int(sp["altin"]), int(sp["xp"])])
 			xp_ekle(float(sp["xp"])); ust_guncelle(); kayit_yaz_koy(); siparis_adim(); siparis_ac(); return
 func panel_ac(baslik: String, ad: String) -> VBoxContainer:
 	if insa_panel: insa_panel.queue_free()
@@ -2228,6 +2234,7 @@ func siparis_ac():
 	etiket(liste, son, 24, Color(0.45, 0.38, 0.3))
 # web xpEkle penceresi: "Seviye N!", ödül ve yeni açılanlar
 func seviye_modal(lv: int, odul: int):
+	ses("gorev")
 	var acilan := []
 	for t in BINA_BILGI:
 		if int(BINA_BILGI[t].get("lv", 1)) == lv and not BINA_BILGI[t].get("gizli", false): acilan.append(BINA_BILGI[t]["ad"])
@@ -2486,13 +2493,13 @@ func statu_kontrol():
 	if _modal != null: return
 	var ad: String = str(kayit_v.get("ad", "")) if kayit_v.get("ad") != null else ""
 	if kayit_v.get("ilce", false) == true and kayit_v.get("sehir", false) != true and sehir_mi():
-		kayit_v["sehir"] = true; kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s artık bir şehir! Köyden indik, şehre vardık." % (ad if ad != "" else "İlçemiz"))
+		kayit_v["sehir"] = true; ses("gorev"); kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s artık bir şehir! Köyden indik, şehre vardık." % (ad if ad != "" else "İlçemiz"))
 		modal_ac("Tebrikler, artık bir şehirsin!", ["Nüfusun %s oldu." % noktali(nufus_say()), "Bir çadırla başlayan oba; mezra, köy, kasaba, ilçe derken koca bir şehir oldu. Köyden indin, şehre vardın!"], [["Harika!", func(): pass]])
 	elif kayit_v.get("kasaba", false) == true and kayit_v.get("ilce", false) != true and nufus_say() >= ILCE_NUFUS:
-		kayit_v["ilce"] = true; kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s artık bir ilçe!" % (ad if ad != "" else "Kasabamız"))
+		kayit_v["ilce"] = true; ses("gorev"); kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s artık bir ilçe!" % (ad if ad != "" else "Kasabamız"))
 		modal_ac("Tebrikler, artık ilçesin!", ["Nüfusun %s oldu." % noktali(nufus_say()), "İnşa → İlçe bölümü açıldı: Esnaf Odası ve Rezidans (her seviye 2000 kişi). Şehir olmak için nüfusu rezidanslarla büyüt."], [["Harika!", func(): pass]])
 	elif kayit_v.get("kasaba", false) != true and nufus_say() >= KASABA_NUFUS:
-		kayit_v["kasaba"] = true; kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s nüfusu %s oldu, artık kasaba!" % [ad if ad != "" else "Köyümüz", noktali(nufus_say())])
+		kayit_v["kasaba"] = true; ses("gorev"); kayit_yaz_koy(); ev_yeniden_ciz(); gazete("%s nüfusu %s oldu, artık kasaba!" % [ad if ad != "" else "Köyümüz", noktali(nufus_say())])
 		modal_ac("Tebrikler, artık kasabasın!", ["Nüfusun %s oldu." % noktali(nufus_say()), "İnşa → Kasaba bölümü açıldı: belediye, lise, sağlık ocağı, itfaiye, karakol, otogar, fabrika, asfalt yol ve Konut Sitesi (her seviye 400 kişi).", "Apartmanlar artık 5 kata kadar büyüyebilir."], [["Harika!", func(): pass]])
 func hedef_ac():
 	var n := nufus_say(); var kap := nufus_kapasite(); var ad := statu_adi(); var h := {}
@@ -2581,7 +2588,7 @@ func sahne_tikla():
 		var sf := func():
 			if sahne.is_empty() or sahne["faz"] != "bekle": return
 			var od := olay_odul(sec[2]); gazete(("%s %s" if str(v["b"]).ends_with("!") else "%s: %s") % [v["b"], sec[1]])
-			sahne["faz"] = "cozum"; sahne["t"] = 0.0
+			sahne["faz"] = "cozum"; sahne["t"] = 0.0; ses("gorev")
 			modal_ac(v["b"], [sec[1], od], [["Güzel!", func(): pass]])
 		bt.append([sec[0], sf])
 	modal_ac(v["b"], [v["m"]], bt)
@@ -3001,6 +3008,82 @@ func etkinlik_koylu(k: Dictionary, dt: float) -> bool:
 		k.bL.rotation.x = max(0.0, sin(t)) * 0.5; k.bR.rotation.x = max(0.0, -sin(t)) * 0.5
 		k.gr.position.y = abs(sin(t)) * 0.015
 	return true
+# --- sesler (web ses()/nota(): Web Audio osilatörleriyle aynı notalar, burada PCM olarak bir kez üretilir) ve ayarlar penceresi
+const SES_HZ := 22050
+var _ses_tampon := {}
+var _ses_cal: Array = []
+func nota_yaz(buf: PackedFloat32Array, f: float, t0: float, sure: float, tip: String, vol: float, kayma: float):
+	var bas := int(t0 * SES_HZ); var n := int((sure + 0.05) * SES_HZ); var faz := 0.0
+	if buf.size() < bas + n: buf.resize(bas + n)
+	for i in n:
+		var t := float(i) / SES_HZ
+		var fr := f * pow(kayma, min(1.0, t / sure)) if kayma > 0 else f
+		faz += fr / SES_HZ; var p := fmod(faz, 1.0)
+		var v := 0.0
+		match tip:
+			"square": v = 1.0 if p < 0.5 else -1.0
+			"triangle": v = 4.0 * abs(p - 0.5) - 1.0
+			"sawtooth": v = 2.0 * p - 1.0
+			_: v = sin(TAU * p)
+		var g := 0.0
+		if t < 0.01: g = 0.0001 * pow(vol / 0.0001, t / 0.01)
+		elif t < sure: g = vol * pow(0.0001 / vol, (t - 0.01) / (sure - 0.01))
+		buf[bas + i] += v * g
+func ses_uret(ad: String) -> AudioStreamWAV:
+	var b := PackedFloat32Array()
+	match ad:
+		"kes": nota_yaz(b, 220, 0, 0.09, "square", 0.05, 0.5); nota_yaz(b, 160, 0.08, 0.12, "triangle", 0.08, 0.6)
+		"tas": nota_yaz(b, 400, 0, 0.05, "square", 0.04, 0.4); nota_yaz(b, 300, 0.05, 0.08, "square", 0.04, 0.4)
+		"insa": nota_yaz(b, 330, 0, 0.1, "triangle", 0.1, 0); nota_yaz(b, 440, 0.1, 0.14, "triangle", 0.1, 0)
+		"tamam": nota_yaz(b, 523, 0, 0.12, "triangle", 0.09, 0); nota_yaz(b, 659, 0.1, 0.12, "triangle", 0.09, 0); nota_yaz(b, 784, 0.2, 0.2, "triangle", 0.09, 0)
+		"gorev":
+			var fl := [523, 659, 784, 1046]
+			for i in 4: nota_yaz(b, fl[i], i * 0.09, 0.22, "triangle", 0.1, 0)
+		"yik": nota_yaz(b, 160, 0, 0.3, "sawtooth", 0.06, 0.4)
+		"hata": nota_yaz(b, 180, 0, 0.15, "square", 0.05, 0.8)
+		"balta": nota_yaz(b, 300, 0, 0.04, "square", 0.025, 0.5); nota_yaz(b, 140, 0.03, 0.07, "triangle", 0.04, 0.7)
+	var pcm := PackedByteArray(); pcm.resize(b.size() * 2)
+	for i in b.size(): pcm.encode_s16(i * 2, int(clamp(b[i] * 2.2, -1.0, 1.0) * 32767))
+	var w := AudioStreamWAV.new(); w.format = AudioStreamWAV.FORMAT_16_BITS; w.mix_rate = SES_HZ; w.stereo = false; w.data = pcm
+	return w
+func ses(ad: String):
+	if ad == "tik" or kayit_v.is_empty() or kayit_v.get("ses") == false: return
+	if not _ses_tampon.has(ad): _ses_tampon[ad] = ses_uret(ad)
+	var o: AudioStreamPlayer = null
+	for p in _ses_cal:
+		if not p.playing: o = p; break
+	if o == null:
+		if _ses_cal.size() >= 6: return
+		o = AudioStreamPlayer.new(); add_child(o); _ses_cal.append(o)
+	o.stream = _ses_tampon[ad]; o.play()
+func ayar_ac():
+	var ses_acik: bool = kayit_v.get("ses") != false
+	modal_ac("Köy Ayarları", [
+		"Kamera: tek parmakla kaydır, iki parmakla yakınlaştır ve döndür.",
+		"Tarla: boş tarlaya dokun, ekin seç. Olgunlaşınca dokun, hepsi biçilir.",
+		"Hayvanlar ve üretim: binaya dokun, ne yapılacağını seç; hazır olunca topla.",
+		"Siparişler: Siparişler düğmesinden teslim et, altın ve tecrübe kazan."], [
+		["Ses: " + ("açık" if ses_acik else "kapalı"), func(): kayit_v["ses"] = not ses_acik; kayit_yaz_koy(); ayar_ac(), true],
+		["Köyün adı", func(): ad_sor(), true],
+		["Ürünleri " + ("köylüler toplasın (açık)" if kayit_v.get("otoTopla") != false else "ben toplarım (kapalı)"), func():
+			kayit_v["otoTopla"] = kayit_v.get("otoTopla") == false; kayit_yaz_koy()
+			bildir("Hazır ürünleri artık köylüler toplayıp ambara taşıyacak" if kayit_v["otoTopla"] else "Hazır ürünleri sen toplayacaksın"), true],
+		["Yol gösteren baloncuk: " + ("kapalı" if kayit_v.get("rehberKapali", false) == true else "açık"), func():
+			kayit_v["rehberKapali"] = not (kayit_v.get("rehberKapali", false) == true); kayit_yaz_koy(); rehber_guncelle(), true],
+		["Köy kodu ve bulut yedeği", func(): modal_ac("Köy kodu", ["Köyünün bulut yedeği ve köy koduyla başka telefona taşıma bu sürümde henüz yok; web sürümünde Ayarlar → Hesap ve yedek bölümünden yapılabiliyor."], [["Tamam", func(): pass]]), true],
+		["Kapat", func(): pass]])
+func ad_sor():
+	var p := PanelContainer.new(); p.set_anchors_preset(Control.PRESET_CENTER); p.custom_minimum_size = Vector2(600, 0); p.grow_horizontal = Control.GROW_DIRECTION_BOTH; p.grow_vertical = Control.GROW_DIRECTION_BOTH; p.z_index = 50
+	var st := kutu_stil(Color(1.0, 0.96, 0.86), 30); st.content_margin_left = 30; st.content_margin_right = 30; st.content_margin_top = 24; st.content_margin_bottom = 24; p.add_theme_stylebox_override("panel", st); _kok_cl.add_child(p); _modal = p
+	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 14); p.add_child(v)
+	etiket(v, "Köyünün adı", 40, Color(0.45, 0.28, 0.08))
+	var g := LineEdit.new(); g.max_length = 16; g.text = str(kayit_v.get("ad", "")) if kayit_v.get("ad") != null else ""; g.add_theme_font_size_override("font_size", 32); g.custom_minimum_size = Vector2(0, 70); v.add_child(g)
+	var bt := Button.new(); bt.text = "Kaydet"; bt.add_theme_font_size_override("font_size", 30); bt.custom_minimum_size = Vector2(0, 76); v.add_child(bt)
+	var yb := kutu_stil(Color(0.36, 0.66, 0.26), 22); bt.add_theme_stylebox_override("normal", yb); bt.add_theme_stylebox_override("hover", yb); bt.add_theme_stylebox_override("pressed", yb)
+	bt.pressed.connect(func():
+		var y := g.text.strip_edges().left(16)
+		if y != "": kayit_v["ad"] = y; kayit_yaz_koy(); ust_guncelle()
+		p.queue_free(); _modal = null)
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
@@ -3041,6 +3124,7 @@ func rehber_adaylar() -> Array:
 func bina_odak(b: Dictionary):
 	var m := bina_merkez(b); hedef = Vector3(m.x, 0, m.z); kamera_guncelle(); bina_goster(b)
 func hasat_hepsi(l: Array):
+	if not l.is_empty(): ses("kes")
 	for b in l: hasat_s(b)
 func hasat_s(b: Dictionary):
 	if ekin_asama(b) != 2: return
@@ -3253,6 +3337,10 @@ func oduncu_adim(k: Dictionary, dt: float, b = null):
 		if not kayit_v.get("kesimSure") is Dictionary: kayit_v["kesimSure"] = {}
 		var ks: Dictionary = kayit_v["kesimSure"]; ks[key] = float(ks.get(key, 0)) + dt
 		k["kfaz"] = float(k.kfaz) + dt * 7; var sal := sin(float(k.kfaz))
+		k["vurus"] = float(k.get("vurus", 0.3)) - dt
+		if float(k.vurus) <= 0:
+			k["vurus"] = TAU / 7
+			if Vector2(gr.position.x - hedef.x, gr.position.z - hedef.z).length() < 7 and mesafe < 20: ses("tas" if int(arazi_t[i]) == 3 else "balta")
 		k.kR.rotation.x = -2.5 * sal if sal > 0 else -0.4 - sal * 0.2; k.kL.rotation.x = k.kR.rotation.x * 0.85
 		k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
 		if not int(arazi_t[i]) in [2, 3]:
@@ -3460,6 +3548,9 @@ func _process(dt):
 			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim()
 			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
+			if _halk_say == 4 and "--ayarac" in OS.get_cmdline_user_args() and _modal == null: ayar_ac()
+			if _halk_say == 3 and "--sestest" in OS.get_cmdline_user_args():
+				for s in ["kes", "tas", "insa", "tamam", "gorev", "yik", "hata", "balta"]: var w := ses_uret(s); print("SES ", s, " ", w.data.size()); ses(s)
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
