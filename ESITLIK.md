@@ -40,7 +40,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Memnuniyette makine işsizliği (tarimDurum), sanayi dumanı (sanayiDenge), çöp, yangın, cenaze yası
 - [x] Aşamalar: Oba → Mezra → Köy → Kasaba (2.000) → İlçe (10.000) → Şehir (50.000), yalnız nüfusa bağlı; nüfus konut kapasitesine doğru yavaşça büyür (halkAdim, memnuniyet hızlandırır); geçişte tebrik penceresi + gazete, evler kasaba/şehir modeline döner, kasabada apartman 5 kat; üstteki ad/nüfus çipine dokununca “Sıradaki hedef” penceresi. Not: göç (gocKontrol) ve yeni gelen aile karşılaması henüz yok
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
-- [x] Olaylar/hikâyeler (web OLAYLAR: 18 olay, en sık 15 dakikada bir, iki seçenek, ceza yok, tek seferlikler bir kez) + sabah gazetesi (dünün olayları, 7-12 arası, son 8 satır). Not: web’deki olayın köyde sahnelenmesi (işaret, katılan köylüler, dokunulmazsa kendi seyri) henüz yok; Godot’da doğrudan seçim penceresi açılıyor
+- [x] Olaylar/hikâyeler (web OLAYLAR: 18 olay, en sık 15 dakikada bir, iki seçenek, ceza yok, tek seferlikler bir kez) + sabah gazetesi (dünün olayları, 7-12 arası, son 8 satır). Olay köyde sahnelenir: olay yerinde (ahır, mandıra, kahvehane, muhtarlık, meydan…) sarı işaret ve başlık belirir, en yakın 5 köylü koşup etrafında toplanır; işarete dokununca seçim, seçimden sonra köylüler el çırpar; 4 dakika dokunulmazsa olay kendi seyrinde biter (keyif artmaz). Not: web’deki özel sahneler (inek kaçar, tavuklar komşu bahçesine girer, imecede iskele/çatı akar, Almancının arabası) henüz sade halde
 - [ ] Rehberin ilk açılış (çadır→kuyu→tarla→ev) adımları ve dayıbaşı/bayi/benzinlik önerileri; teraslı ev inşası (glb yok)
 - [ ] Sesler, ayarlar (kalite, ses)
 - [ ] Sohbet / çevrimiçi

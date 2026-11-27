@@ -730,7 +730,9 @@ func insaat_adim(k: Dictionary, dt: float) -> void:
 		k.ust.rotation.x = 0.1 + max(0.0, -f) * 0.3; k.kR.rotation.x = -2.7 + (f + 1) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.8
 func koylu_adim(dt: float):
 	insa_isci.clear()
+	sahne_adim(dt)
 	for k in koyluler:
+		if sahne_koylu(k, dt): continue
 		if k.get("insaB") != null:
 			if k.get("od") != null: oduncu_birak(k)
 			insaat_adim(k, dt); continue
@@ -2398,7 +2400,7 @@ func olay_adim():
 	_olay_sayac += 1
 	if _olay_sayac < (3 if zorla != "" else 30): return
 	_olay_sayac = 0
-	if _modal != null or insa_panel != null or hayalet != null or koyluler.size() < 2: return
+	if _modal != null or insa_panel != null or hayalet != null or koyluler.size() < 2 or not sahne.is_empty(): return
 	var t := simdi_ms()
 	if zorla == "":
 		if t < float(kayit_v.get("olaySon", 0) if kayit_v.get("olaySon") != null else 0) + 15 * 60000.0 or randf() > 0.35: return
@@ -2413,16 +2415,9 @@ func olay_adim():
 		var v: Variant = olay_yap(id)
 		if v == null: continue
 		kayit_v["olaySon"] = t; gor[id] = t
-		var bt := []
-		for s in v["s"]:
-			var sec: Array = s
-			var sf := func():
-				var od := olay_odul(sec[2]); gazete("%s: %s" % [v["b"], sec[1]])
-				modal_ac(v["b"], [sec[1], od], [["Tamam", func(): pass]])
-			bt.append([sec[0], sf])
-		modal_ac(v["b"], [v["m"]], bt); kayit_yaz_koy()
-		if "--olaysec" in OS.get_cmdline_user_args():
-			_modal.queue_free(); _modal = null; bt[0][1].call(); print("OLAY ", kayit_v["gazete"][-1], " mutlu ", kayit_v.get("olayMutlu"))
+		sahne_kur(id, v); kayit_yaz_koy()
+		if zorla != "": hedef = sahne["yer"]; kamera_guncelle()  # test: kamerayı olay yerine al
+		if "--olaysec" in OS.get_cmdline_user_args(): sahne_tikla()
 		return
 var _olay_zorlandi := false
 var _halk_say := 0
@@ -2501,6 +2496,98 @@ func hedef_ac():
 	if kap < int(h["nuf"]): sat.append("Evlerin en çok %s kişi alıyor. %s kişiye ulaşmak için daha çok konut gerek." % [noktali(kap), noktali(h["nuf"])])
 	sat.append("İpucu: " + h["ipucu"])
 	modal_ac("Sıradaki hedef: " + h["ad"], sat, [["Tamam", func(): pass]])
+# --- olay köyde sahnelenir (web sahneKur/sahneAdim/sahneZaman/sahneTikla): olay yerinde işaret belirir, yakındaki köylüler toplanır;
+# dokununca seçim yapılır, dokunulmazsa SAHNE_BEKLE sonunda olay kendi seyrinde biter
+const SAHNE_BEKLE := 240.0
+var sahne := {}
+func sahne_yer(id: String) -> Vector3:
+	var bul := func(t: String):
+		for b in kayit_v["b"]:
+			if b["tip"] == t and b.get("insa") == null: return b
+		return null
+	var tip_ := {"maya": "mandira", "baytar": "ahir", "yayla": "agil", "mektup": "muhtar", "kahvetv": "kahvehane", "karne": "okul", "telefon": "muhtar", "otobus": "otogar", "inek": "ahir", "tavuk": "kumes"}
+	var b = bul.call(tip_[id]) if tip_.has(id) else null
+	if b == null and id == "otobus": b = bul.call("muhtar")
+	if b == null and id in ["kizisteme", "imece"]:
+		var ev: Array = kayit_v["b"].filter(func(q): return ev_mi(q["tip"]) and q.get("insa") == null)
+		if not ev.is_empty(): b = ev[randi() % ev.size()]
+	if b == null: b = bul.call("meydan")
+	if b == null: b = bul.call("muhtar")
+	if b == null:
+		var ev: Array = kayit_v["b"].filter(func(q): return ev_mi(q["tip"]) and q.get("insa") == null)
+		if not ev.is_empty(): b = ev[0]
+	if b == null: return Vector3(hedef.x, 0, hedef.z)
+	var kp := kapi_poz(b); var m := bina_merkez(b); var yon := (kp - m); yon.y = 0
+	return kp + (yon.normalized() * 0.45 if yon.length() > 0.01 else Vector3.ZERO)
+func sahne_kur(id: String, v: Dictionary):
+	var yer := sahne_yer(id)
+	var aday: Array = koyluler.filter(func(k): return k.get("insaB") == null)
+	aday.sort_custom(func(a, b): return (a.gr.position - yer).length_squared() < (b.gr.position - yer).length_squared())
+	var kat: Array = aday.slice(0, 5)
+	for i in kat.size():
+		var k: Dictionary = kat[i]; oduncu_birak(k); var a: float = TAU * i / max(1, kat.size()) + randf() * 0.4
+		k["sahneH"] = yer + Vector3(cos(a), 0, sin(a)) * 0.5; k["sahneM"] = yer
+	var isr := Node3D.new(); add_child(isr); isr.position = yer
+	var l := Label3D.new(); l.text = "!"; l.font_size = 160; l.outline_size = 30; l.modulate = Color(1, 0.82, 0.2); l.outline_modulate = Color(0.35, 0.2, 0.05)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.pixel_size = 0.0018; l.position.y = 0.75; isr.add_child(l)
+	var l2 := Label3D.new(); l2.text = v["b"]; l2.font_size = 60; l2.outline_size = 16; l2.modulate = Color(1, 0.97, 0.88); l2.outline_modulate = Color(0.25, 0.15, 0.05)
+	l2.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l2.no_depth_test = true; l2.pixel_size = 0.0018; l2.position.y = 0.52; isr.add_child(l2)
+	sahne = {"id": id, "v": v, "yer": yer, "kat": kat, "faz": "bekle", "t": 0.0, "isaret": isr}
+	bildir("Köyde bir şey oluyor: %s. Sarı işarete dokun." % v["b"])
+func sahne_bitir():
+	if sahne.is_empty(): return
+	for k in sahne["kat"]:
+		k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0; k.bekle = 0.0
+	if is_instance_valid(sahne["isaret"]): sahne["isaret"].queue_free()
+	sahne = {}
+func sahne_adim(dt: float):
+	if sahne.is_empty(): return
+	sahne["t"] = float(sahne["t"]) + dt
+	var isr: Node3D = sahne["isaret"]
+	if is_instance_valid(isr): isr.get_child(0).position.y = 0.75 + sin(float(sahne["t"]) * 3.0) * 0.05; isr.visible = sahne["faz"] == "bekle"
+	if sahne["faz"] == "bekle":
+		if float(sahne["t"]) > (5.0 if "--sahnezaman" in OS.get_cmdline_user_args() else SAHNE_BEKLE): sahne_zaman(); print("SAHNE ", kayit_v["gazete"][-1])
+	elif float(sahne["t"]) > 20.0: sahne_bitir()
+func sahne_zaman():
+	# kimse dokunmadı: olay kendi seyrinde biter (ilk seçeneğin sonucu, keyif artmadan)
+	var v: Dictionary = sahne["v"]; var s: Array = v["s"][0]; var od: Dictionary = (s[2] as Dictionary).duplicate(); od.erase("mutlu")
+	var yazi := ""
+	if sahne["id"] == "inek": yazi = "Kimse peşine düşmeyince Sarıkız kendi kendine ahıra döndü."
+	elif sahne["id"] == "gurbetci": yazi = "Almancı amca meydanda kimseyi bulamadı, hediyeleriyle şehre döndü."; od = {}
+	else: yazi = s[1]
+	olay_odul(od); gazete(("%s %s" if str(v["b"]).ends_with("!") else "%s: %s") % [v["b"], yazi]); sahne_bitir()
+func sahne_tikla():
+	if sahne.is_empty() or sahne["faz"] != "bekle" or _modal != null: return
+	var v: Dictionary = sahne["v"]; var bt := []
+	for s in v["s"]:
+		var sec: Array = s
+		var sf := func():
+			if sahne.is_empty() or sahne["faz"] != "bekle": return
+			var od := olay_odul(sec[2]); gazete(("%s %s" if str(v["b"]).ends_with("!") else "%s: %s") % [v["b"], sec[1]])
+			sahne["faz"] = "cozum"; sahne["t"] = 0.0
+			modal_ac(v["b"], [sec[1], od], [["Güzel!", func(): pass]])
+		bt.append([sec[0], sf])
+	modal_ac(v["b"], [v["m"]], bt)
+func sahne_dokundu(ekran: Vector2) -> bool:
+	if sahne.is_empty() or sahne["faz"] != "bekle": return false
+	var p: Vector3 = sahne["yer"] + Vector3(0, 0.6, 0)
+	if kamera.is_position_behind(p): return false
+	if kamera.unproject_position(p).distance_to(ekran) < 110 or kamera.unproject_position(sahne["yer"]).distance_to(ekran) < 90:
+		sahne_tikla(); return true
+	return false
+func sahne_koylu(k: Dictionary, dt: float) -> bool:
+	if not k.has("sahneH"): return false
+	var hz: float = k.hiz; k.hiz = 0.45  # olay yerine koşar adım
+	var vardi := koylu_yuru(k, k.sahneH, dt); k.hiz = hz
+	if vardi:
+		var m: Vector3 = k.sahneM; k.gr.rotation.y = lerp_angle(k.gr.rotation.y, atan2(m.x - k.gr.position.x, m.z - k.gr.position.z), dt * 6)
+		k.faz += dt
+		if sahne.get("faz", "") == "cozum":
+			var f := sin(k.faz * 9.0); k.kR.rotation.x = -1.6 + f * 0.3; k.kL.rotation.x = -1.6 - f * 0.3  # el çırpar, sevinir
+		else:
+			k.kR.rotation.x = -0.5 + sin(k.faz * 2.0) * 0.25; k.kL.rotation.x = lerp(k.kL.rotation.x, 0.0, dt * 4)  # konuşur, el kol sallar
+		k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
+	return true
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
@@ -2627,6 +2714,7 @@ func bina_goster(b: Dictionary):
 var _dokunma_bas := Vector2.ZERO
 var _surukledi := false
 func dokunma_sec(ekran: Vector2):
+	if sahne_dokundu(ekran): return
 	# kameradan ışın → zemin (y=0) → karo → bina
 	var o := kamera.project_ray_origin(ekran); var d := kamera.project_ray_normal(ekran)
 	if abs(d.y) < 1e-4: return
