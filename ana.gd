@@ -57,6 +57,7 @@ func _ready():
 		if a.begins_with("--saat="): saat_arg = float(a.substr(7))
 		if a.begins_with("--kayit="): kayit_adi = a.substr(8)
 		if a.begins_with("--mesafe="): mesafe_arg = float(a.substr(9))
+		if a.begins_with("--aci="): aci_y = float(a.substr(6))
 		if a.begins_with("--hedef="): var p = a.substr(8).split(","); hedef_arg = Vector3(float(p[0]), 0, float(p[1]))
 	cevre_kur()
 	if hedef_arg != Vector3.ZERO: hedef = hedef_arg
@@ -730,7 +731,7 @@ func insaat_adim(k: Dictionary, dt: float) -> void:
 		k.ust.rotation.x = 0.1 + max(0.0, -f) * 0.3; k.kR.rotation.x = -2.7 + (f + 1) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.8
 func koylu_adim(dt: float):
 	insa_isci.clear()
-	sahne_adim(dt)
+	sahne_adim(dt); gelen_adim(dt)
 	for k in koyluler:
 		if sahne_koylu(k, dt): continue
 		if k.get("insaB") != null:
@@ -2261,6 +2262,7 @@ func emoji_sil(s: String) -> String:
 func gazete(m: String):
 	if not kayit_v.get("gazete") is Array: kayit_v["gazete"] = []
 	var g: Array = kayit_v["gazete"]; g.append({"gun": gun_no(), "m": m})
+	if OS.is_debug_build() and DisplayServer.get_name() == "headless": print("GAZETE ", m, " halk=", kayit_v.get("halk"))
 	if g.size() > 60: g.reverse(); g.resize(60); g.reverse()
 const GUN_AD := ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
 func gazete_adim():
@@ -2421,6 +2423,7 @@ func olay_adim():
 		return
 var _olay_zorlandi := false
 var _halk_say := 0
+var _gelen_test := false
 # --- aşamalar: web statuAdi/kasabaMi/ilceMi/sehirMi/halkAdim/sonrakiHedef — Oba → Mezra → Köy → Kasaba → İlçe → Şehir (yalnız nüfusa bağlı; binalar önerilir)
 const KASABA_NUFUS := 2000
 const ILCE_NUFUS := 10000
@@ -2461,9 +2464,13 @@ func halk_adim():
 	if h > kap: h = max(isim, kap)
 	elif h < kap:
 		var mp := memnun_puan()
+		var once := h
 		if mp >= GOC_SINIR or nufus_say() < 80: h = min(float(kap), h + max(0.02, (kap - h) * 0.003) * (0.4 + mp / 80.0))
+		var yeni := int(floor(h / AILE_KISI)) - int(floor(once / AILE_KISI))
+		if yeni > 0 and once > 10: gelen_aile += yeni
+	if "--gelen" in OS.get_cmdline_user_args() and gelen_aile == 0 and gelen_k.is_empty() and not _gelen_test: _gelen_test = true; gelen_aile = 2; gelen_bekle = 0
 	kayit_v["halk"] = h
-	statu_kontrol()
+	statu_kontrol(); goc_kontrol()
 func ev_yeniden_ciz():
 	for b in kayit_v["b"]:
 		if b["tip"] == "ev": bina_kaldir_dunya(b); bina_ciz_tek(b)
@@ -2519,11 +2526,11 @@ func sahne_yer(id: String) -> Vector3:
 	if b == null: return Vector3(hedef.x, 0, hedef.z)
 	var kp := kapi_poz(b); var m := bina_merkez(b); var yon := (kp - m); yon.y = 0
 	return kp + (yon.normalized() * 0.45 if yon.length() > 0.01 else Vector3.ZERO)
-func sahne_kur(id: String, v: Dictionary):
-	var yer := sahne_yer(id)
+func sahne_kur(id: String, v: Dictionary, yer_ = null, kac := 5):
+	var yer: Vector3 = yer_ if yer_ != null else sahne_yer(id)
 	var aday: Array = koyluler.filter(func(k): return k.get("insaB") == null)
 	aday.sort_custom(func(a, b): return (a.gr.position - yer).length_squared() < (b.gr.position - yer).length_squared())
-	var kat: Array = aday.slice(0, 5)
+	var kat: Array = aday.slice(0, kac)
 	for i in kat.size():
 		var k: Dictionary = kat[i]; oduncu_birak(k); var a: float = TAU * i / max(1, kat.size()) + randf() * 0.4
 		k["sahneH"] = yer + Vector3(cos(a), 0, sin(a)) * 0.5; k["sahneM"] = yer
@@ -2543,6 +2550,7 @@ func sahne_bitir():
 func sahne_adim(dt: float):
 	if sahne.is_empty(): return
 	sahne["t"] = float(sahne["t"]) + dt
+	if goc_adim(dt): return
 	var isr: Node3D = sahne["isaret"]
 	if is_instance_valid(isr): isr.get_child(0).position.y = 0.75 + sin(float(sahne["t"]) * 3.0) * 0.05; isr.visible = sahne["faz"] == "bekle"
 	if sahne["faz"] == "bekle":
@@ -2558,6 +2566,7 @@ func sahne_zaman():
 	olay_odul(od); gazete(("%s %s" if str(v["b"]).ends_with("!") else "%s: %s") % [v["b"], yazi]); sahne_bitir()
 func sahne_tikla():
 	if sahne.is_empty() or sahne["faz"] != "bekle" or _modal != null: return
+	if sahne["id"] == "goc": goc_tikla(); return
 	var v: Dictionary = sahne["v"]; var bt := []
 	for s in v["s"]:
 		var sec: Array = s
@@ -2588,6 +2597,166 @@ func sahne_koylu(k: Dictionary, dt: float) -> bool:
 			k.kR.rotation.x = -0.5 + sin(k.faz * 2.0) * 0.25; k.kL.rotation.x = lerp(k.kL.rotation.x, 0.0, dt * 4)  # konuşur, el kol sallar
 		k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
 	return true
+# --- göç ve gelen aileler (web gocKontrol/gocTikla/gelenAdim): köy mutsuzsa arada bir aile kamyona yükler; sebep düzelirse vazgeçer,
+# dokunulmazsa göçer (nüfus 4 azalır). Nüfus her 4 kişi arttıkça bir aile kamyonla gelip evine yerleşir.
+const AILE_KISI := 4
+const GOC_ARA := 20 * 60000.0
+const SOYAD := ["Yılmaz", "Kaya", "Demir", "Şahin", "Çelik", "Aydın", "Öztürk", "Arslan", "Doğan", "Kılıç", "Koç", "Kurt", "Özdemir", "Polat", "Erdem", "Aksoy", "Tekin", "Güneş", "Bulut", "Karaca", "Uçar", "Ateş"]
+func aile_adi() -> String: return SOYAD[randi() % SOYAD.size()]
+func goc_kamyon() -> Dictionary:
+	var gr := Node3D.new(); add_child(gr)
+	var bos := sahne_yukle("gockamyon"); var dolu := sahne_yukle("gockamyon_yuklu")
+	if bos == null or dolu == null: gr.queue_free(); return {}
+	for m in [bos, dolu]: m.scale = Vector3.ONE * 1.1; gr.add_child(m)
+	return {"gr": gr, "bos": bos, "dolu": dolu, "yol": []}
+func kamyon_yuklu(k: Dictionary, v: bool): k.dolu.visible = v; k.bos.visible = not v
+func en_yakin_yol(p: Vector3) -> int:
+	var en := -1; var d := 1e9
+	for i in _yol_komsu:
+		var dd: float = (karo_poz(i) - p).length_squared()
+		if dd < d: d = dd; en = i
+	return en
+func yol_rota(a: Vector3, b: Vector3) -> Array:
+	# köyün yollarından BFS; yol yoksa düz gider
+	var s := en_yakin_yol(a); var e := en_yakin_yol(b)
+	if s < 0 or e < 0: return [b]
+	var once := {s: -1}; var kuyruk := [s]; var qi := 0
+	while qi < kuyruk.size():
+		var i: int = kuyruk[qi]; qi += 1
+		if i == e: break
+		for j in _yol_komsu.get(i, []):
+			if not once.has(j): once[j] = i; kuyruk.append(j)
+	if not once.has(e): return [b]
+	var l := []; var c := e
+	while c != -1: l.push_front(karo_poz(c)); c = once[c]
+	l.append(b); return l
+func kamyon_bas(p: Vector3) -> Vector3:
+	var yol := []
+	for b in kayit_v["b"]:
+		if b["tip"] in ["yol", "asfalt"]: yol.append(karo_poz(int(b["z"]) * WN + int(b["x"])))
+	var uygun := yol.filter(func(q): var d: float = (q - p).length(); return d > 8 and d < 16)
+	if not uygun.is_empty(): return uygun[randi() % uygun.size()]
+	if not yol.is_empty():
+		yol.sort_custom(func(x, y): return (x - p).length() > (y - p).length()); return yol[0]
+	var a := atan2(p.z, p.x) + randf_range(-0.4, 0.4); return p + Vector3(cos(a), 0, sin(a)) * 11
+func kamyon_sur(k: Dictionary, dt: float, hiz: float) -> bool:
+	var gr: Node3D = k.gr; var yol: Array = k.yol
+	while not yol.is_empty():
+		var h: Vector3 = yol[0]; var f := h - gr.position; f.y = 0
+		if f.length() < 0.06: yol.pop_front(); continue
+		gr.position += f.normalized() * min(f.length(), hiz * dt); gr.rotation.y = lerp_angle(gr.rotation.y, atan2(f.x, f.z) + PI, dt * 6)  # kabin modelin -z ucunda
+		return false
+	return true
+func goc_park(ev: Dictionary) -> Vector3:
+	# kamyon evin önündeki yola yanaşır (yol yoksa kapıya)
+	var kp := kapi_poz(ev); var i := en_yakin_yol(kp)
+	if i >= 0 and (karo_poz(i) - kp).length() < 2.6: return karo_poz(i)
+	return kp
+func goc_ev_sec():
+	var l: Array = kayit_v["b"].filter(func(b): return ev_mi(b["tip"]) and b["tip"] != "cadir" and b.get("insa") == null and b.get("hasar", false) != true)
+	return l[randi() % l.size()] if not l.is_empty() else null
+func goc_sebep() -> Dictionary:
+	var m := memnuniyet(); var kotu: Array = (m["l"] as Array).filter(func(x): return float(x[0]) < 0)
+	kotu.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	if not kotu.is_empty(): return {"metin": str(kotu[0][1]).split(" (")[0].to_lower()}
+	if not (m["eksik"] as Array).is_empty(): return {"metin": str(m["eksik"][0][2]).to_lower() + " yok", "bina": true}
+	return {"metin": "köyde huzur kalmadı"}
+func goc_log(t: String, n: int):
+	var g := gun_no(); var l: Array = (kayit_v.get("gocLog", []) if kayit_v.get("gocLog") is Array else []).filter(func(x): return int(x["g"]) > g - 7)
+	var e = null
+	for x in l:
+		if int(x["g"]) == g and x["t"] == t: e = x
+	if e == null: e = {"g": g, "t": t, "n": 0}; l.append(e)
+	e["n"] = int(e["n"]) + n; kayit_v["gocLog"] = l
+func goc_kontrol():
+	if not sahne.is_empty() or koyluler.size() < 2 or _modal != null or hayalet != null: return
+	var halk := float(kayit_v.get("halk", 0) if kayit_v.get("halk") != null else 0)
+	if nufus_say() < 80 or halk - (kayit_v.get("nufus", []) as Array).size() < AILE_KISI: return
+	var zorla := "--goc" in OS.get_cmdline_user_args()
+	if not zorla and (memnun_puan() >= GOC_SINIR or simdi_ms() < float(kayit_v.get("gocSon", 0) if kayit_v.get("gocSon") != null else 0) + GOC_ARA): return
+	var ev = goc_ev_sec(); if ev == null: return
+	var k := goc_kamyon(); if k.is_empty(): return
+	var park := goc_park(ev); var bas := kamyon_bas(park)
+	k.gr.position = bas; k["yol"] = yol_rota(bas, park); kamyon_yuklu(k, false)
+	kayit_v["gocSon"] = simdi_ms()
+	var ad := aile_adi()
+	sahne_kur("goc", {"b": "%s ailesi göç ediyor" % ad, "m": "", "s": []}, park, 2)
+	sahne.merge({"ev": ev, "park": park, "bas": bas, "ad": ad, "sebep": goc_sebep(), "oto": k, "yuk": 0.0, "uzat": false})
+	if zorla: hedef = park; kamera_guncelle()
+func goc_adim(dt: float) -> bool:
+	if sahne.get("id") != "goc": return false
+	var k: Dictionary = sahne["oto"]
+	if sahne["faz"] == "bekle":
+		if not k.yol.is_empty():
+			kamyon_sur(k, dt, 1.3); sahne["t"] = min(float(sahne["t"]), 1.0)
+			if "--goc" in OS.get_cmdline_user_args(): hedef = k.gr.position; kamera_guncelle()
+			return true
+		sahne["yuk"] = float(sahne["yuk"]) + dt
+		if float(sahne["yuk"]) > 12: kamyon_yuklu(k, true)
+		if memnun_puan() >= GOC_SINIR and not "--goc" in OS.get_cmdline_user_args():
+			kamyon_yuklu(k, false); goc_gonder(); gazete("%s ailesi vazgeçti, eşyalarını geri indirdi. \"Burada kalıyoruz\" dediler." % sahne["ad"]); bildir("%s ailesi göçten vazgeçti" % sahne["ad"])
+			return true
+		if float(sahne["t"]) > (8.0 if "--gocbitir" in OS.get_cmdline_user_args() else SAHNE_BEKLE):
+			kamyon_yuklu(k, true); goc_gonder()
+			kayit_v["halk"] = max((kayit_v.get("nufus", []) as Array).size(), float(kayit_v.get("halk", 0)) - AILE_KISI); goc_log("-", 1); kayit_yaz_koy()
+			gazete("%s ailesi eşyasını kamyona yükleyip göçtü. Giderken \"%s\" dediler. Evleri boş kaldı." % [sahne["ad"], sahne["sebep"]["metin"]]); bildir("%s ailesi göçtü: %s" % [sahne["ad"], sahne["sebep"]["metin"]])
+		return true
+	if sahne["faz"] == "git":
+		if kamyon_sur(k, dt, 1.3) or float(sahne["t"]) > 60:
+			k.gr.queue_free(); sahne_bitir()
+		return true
+	return true
+func goc_gonder():
+	sahne["faz"] = "git"; sahne["t"] = 0.0; sahne["oto"]["yol"] = yol_rota(sahne["oto"].gr.position, sahne["bas"])
+	for k in sahne["kat"]: k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0
+	sahne["kat"] = []
+	if is_instance_valid(sahne["isaret"]): sahne["isaret"].visible = false
+func goc_tikla():
+	var s := sahne; var bt := []
+	if not s["uzat"]:
+		var mf := func():
+			if sahne == s: s["uzat"] = true; s["t"] = min(float(s["t"]), 0.0); gazete("Muhtar %s ailesiyle konuştu; biraz daha beklemeye razı oldular." % s["ad"])
+		bt.append(["Muhtar gidip konuşsun", mf])
+	if s["sebep"].get("bina", false): bt.append(["İnşaat menüsü", func(): insa_ac()])
+	bt.append(["Tamam", func(): pass, true])
+	modal_ac("%s ailesi göç ediyor" % s["ad"], ["Eşyalarını kamyona yüklüyorlar. \"%s\" diyorlar." % str(s["sebep"]["metin"]).capitalize(), "Sebep düzelirse eşyalarını geri indirip kalırlar. Kamyon yola çıkarsa ev boş kalır."], bt)
+var gelen_aile := 0
+var gelen_k := {}
+var gelen_bekle := 20.0
+func gelen_adim(dt: float):
+	if gelen_k.is_empty():
+		gelen_bekle -= dt
+		if gelen_aile < 1 or gelen_bekle > 0: return
+		var ev = goc_ev_sec(); var k := goc_kamyon() if ev != null else {}
+		if k.is_empty(): gelen_aile = 0; return
+		var park := goc_park(ev); var bas := kamyon_bas(park)
+		k.gr.position = bas; k["yol"] = yol_rota(bas, park); kamyon_yuklu(k, true)
+		gelen_k = {"k": k, "ev": ev, "park": park, "bas": bas, "faz": "gel", "t": 0.0, "n": gelen_aile, "ad": aile_adi(), "insan": []}; gelen_aile = 0; return
+	var g := gelen_k; g["t"] = float(g["t"]) + dt
+	if not kayit_v["b"].has(g["ev"]) and g["faz"] != "git": g["faz"] = "git"; g["k"]["yol"] = yol_rota(g["k"].gr.position, g["bas"])
+	if g["faz"] == "gel":
+		if kamyon_sur(g["k"], dt, 1.3) or float(g["t"]) > 60:
+			g["faz"] = "in"; g["t"] = 0.0
+			for i in 3:
+				var r := insan_yap(("k" if i == 1 else "e") + str(randi() % 4)); add_child(r.gr)
+				if i == 2: r.gr.scale = Vector3.ONE * 0.65
+				r.gr.position = g["park"] + Vector3((i - 1) * 0.2, 0, 0.1); r["hiz"] = 0.3; r["bekle"] = i * 1.2; r["faz"] = 0.0; g["insan"].append(r)
+	elif g["faz"] == "in":
+		var kp := kapi_poz(g["ev"])
+		for r in g["insan"]:
+			if not r.gr.visible: continue
+			r.bekle -= dt
+			if r.bekle > 0: continue
+			if koylu_yuru(r, kp, dt): r.gr.visible = false
+		if float(g["t"]) > 4: kamyon_yuklu(g["k"], false)
+		if g["insan"].all(func(r): return not r.gr.visible) or float(g["t"]) > 20:
+			for r in g["insan"]: r.gr.queue_free()
+			g["insan"] = []; g["faz"] = "git"; g["t"] = 0.0; g["k"]["yol"] = yol_rota(g["k"].gr.position, g["bas"]); goc_log("+", int(g["n"]))
+			if kayit_v.get("gelenGaz") != gun_no():
+				kayit_v["gelenGaz"] = gun_no()
+				gazete("%s ailesi eşyalarını kamyondan indirip %s yerleşti.%s" % [g["ad"], "köye" if statu_adi() == "Köy" else "buraya", (" Onlarla birlikte %d aile daha geldi." % (int(g["n"]) - 1)) if int(g["n"]) > 1 else ""])
+	elif kamyon_sur(g["k"], dt, 1.4) or float(g["t"]) > 60:
+		g["k"].gr.queue_free(); gelen_k = {}; gelen_bekle = 45.0
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
