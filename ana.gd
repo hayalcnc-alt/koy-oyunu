@@ -1115,40 +1115,72 @@ var hayalet_rot := 0
 var _kok_cl: CanvasLayer
 
 func yeter(cost: Dictionary) -> bool:
-	var res: Dictionary = kayit_v.get("res", {})
+	# web yeter(): altın/odun/taş hazineden, alet/kereste gibi mallar ambardan
 	for k in cost:
-		if not k in ["altin", "odun", "tas"]: return false
-		if float(res.get(k, 0)) < float(cost[k]): return false
+		if sahip(k) < float(cost[k]): return false
 	return true
 
 func maliyet_yazi(cost: Dictionary) -> String:
 	var ad := {"altin": "altın", "odun": "odun", "tas": "taş"}; var l := []
-	for k in cost: l.append("%s %s" % [kisalt(float(cost[k])), ad.get(k, k)])
+	for k in cost: l.append("%s %s" % [kisalt(float(cost[k])), ad.get(k, urun_ad(k).to_lower())])
 	return ", ".join(l)
 
+var aktif_kat := "koy"
+func kasaba_mi() -> bool: return kayit_v.get("kasaba", false) == true
+func ilce_mi() -> bool: return kayit_v.get("ilce", false) == true
+func kat_binasi(kat: String, t: String) -> bool:
+	for k in VERI.get("kategori", []):
+		if k[0] == kat: return t in k[2]
+	return false
+func sayi(t: String) -> int: return kayit_v["b"].filter(func(b): return b["tip"] == t).size()
+func max_tarla() -> int: return min(30, 3 + klv() * 2)
+func kart_engel(t: String) -> String:
+	# web kartEngel: seviye, kasaba/ilçe, nüfus şartı, tek bina, tarla sınırı, bahçe sayısı, boş köylü
+	var d: Dictionary = BINA_BILGI[t]
+	if klv() < int(d.get("lv", 1)): return "Seviye %d gerekir" % int(d.get("lv", 1))
+	if kat_binasi("kasaba", t) and not kasaba_mi(): return "Köy önce kasaba olmalı"
+	var ns := int(VERI.get("nuf_sart", {}).get(t, d.get("nuf", 0)))
+	if ns > nufus_say(): return "Nüfus %d olunca" % ns
+	if kat_binasi("ilce", t) and not ilce_mi(): return "Kasaba önce ilçe olmalı"
+	if d.get("tek", false) and sayi(t) > 0: return "Zaten var"
+	if t == "tarla" and sayi("tarla") >= max_tarla(): return "Tarla sınırı %d" % max_tarla()
+	if t == "bahce" and sayi("bahce") >= kayit_v["b"].filter(func(b): return ev_mi(b["tip"])).size(): return "Her ev için bir bahçe"
+	if d.get("isci", false) and int(sonuc["isciKul"]) >= int(sonuc["yer"]): return "Boş köylü yok, ev kur"
+	return ""
 func insa_ac():
+	# web çekmecesi: kategori sekmeleri, her kartta maliyet ve kilit nedeni
+	hesapla()
 	if insa_panel: insa_panel.queue_free()
 	bilgi_panel.visible = false
-	insa_panel = PanelContainer.new(); insa_panel.set_anchors_preset(Control.PRESET_FULL_RECT); insa_panel.offset_top = 300; insa_panel.offset_bottom = -170; insa_panel.offset_left = 16; insa_panel.offset_right = -16
+	insa_panel = PanelContainer.new(); insa_panel.name = "insa"; insa_panel.set_anchors_preset(Control.PRESET_FULL_RECT); insa_panel.offset_top = 300; insa_panel.offset_bottom = -190; insa_panel.offset_left = 16; insa_panel.offset_right = -16
 	insa_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.98), 26)); _kok_cl.add_child(insa_panel)
 	var vb := VBoxContainer.new(); insa_panel.add_child(vb)
 	var ust := HBoxContainer.new(); vb.add_child(ust)
 	var bl := Label.new(); bl.text = "İnşa"; bl.add_theme_font_size_override("font_size", 42); bl.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bl)
 	var kp := Button.new(); kp.text = " X "; kp.add_theme_font_size_override("font_size", 32); kp.pressed.connect(func(): insa_panel.queue_free(); insa_panel = null); ust.add_child(kp)
+	var ksc := ScrollContainer.new(); ksc.custom_minimum_size = Vector2(0, 70); ksc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; vb.add_child(ksc)
+	var kh := HBoxContainer.new(); kh.add_theme_constant_override("separation", 6); ksc.add_child(kh)
+	for k in VERI.get("kategori", []):
+		if k[0] == "kasaba" and not kasaba_mi(): continue
+		if k[0] == "ilce" and not ilce_mi(): continue
+		var kb := Button.new(); kb.text = k[1]; kb.toggle_mode = true; kb.button_pressed = k[0] == aktif_kat; kb.add_theme_font_size_override("font_size", 24)
+		var kat: String = k[0]; kb.pressed.connect(func(): aktif_kat = kat; insa_ac()); kh.add_child(kb)
 	var sc := ScrollContainer.new(); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; vb.add_child(sc)
 	var liste := VBoxContainer.new(); liste.size_flags_horizontal = Control.SIZE_EXPAND_FILL; liste.add_theme_constant_override("separation", 8); sc.add_child(liste)
-	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
-	var sira: Array = YOL_TIP.duplicate(); for k in BINA_BILGI: if not k in YOL_TIP: sira.append(k)
-	for tip in sira:
+	var tipler: Array = []
+	for k in VERI.get("kategori", []):
+		if k[0] == aktif_kat: tipler = k[2]
+	for tip in tipler:
+		if not BINA_BILGI.has(tip): continue
 		var bb: Dictionary = BINA_BILGI[tip]
-		if bb.get("gizli", false) or tip in ["teras", "cami"]: continue
+		if bb.get("gizli", false) or tip == "cami": continue
 		if tip == "kopru" and yol_kasaba: continue
 		if not tip in YOL_TIP and not tip in ["cit", "lamba"] and not FileAccess.file_exists("res://modeller/%s.glb" % tip): continue
-		if int(bb.get("lv", 1)) > klv: continue
-		var bt := Button.new(); bt.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		bt.text = "%s   ·   %s" % [bb["ad"], maliyet_yazi(bb.get("cost", {}))]
-		bt.add_theme_font_size_override("font_size", 28); bt.disabled = not yeter(bb.get("cost", {}))
-		bt.pressed.connect(func(): yerlestir_basla(tip))
+		var engel := kart_engel(tip)
+		var bt := Button.new(); bt.alignment = HORIZONTAL_ALIGNMENT_LEFT; bt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		bt.text = "%s\n%s" % [bb["ad"], engel if engel != "" else maliyet_yazi(bb.get("cost", {}))]
+		bt.add_theme_font_size_override("font_size", 26); bt.disabled = engel != "" or not yeter(bb.get("cost", {}))
+		var tp: String = tip; bt.pressed.connect(func(): yerlestir_basla(tp))
 		liste.add_child(bt)
 
 func yerlestir_basla(tip: String):
@@ -1274,7 +1306,7 @@ func yerlestir_onay():
 		karo_isle(b, true); bina_ciz_tek(b); yerlestir_iptal(); hesapla(); kayit_yaz_koy(); bildir("%s taşındı" % bb["ad"]); return
 	if not yer_uygun(hayalet_karo.x, hayalet_karo.y, bx) or not yeter(bb.get("cost", {})): return
 	var res: Dictionary = kayit_v["res"]
-	for kk in bb.get("cost", {}): res[kk] = float(res[kk]) - float(bb["cost"][kk])
+	for kk in bb.get("cost", {}): harca(kk, float(bb["cost"][kk]))
 	var yid := 1
 	for b in kayit_v["b"]: yid = max(yid, int(b["id"]) + 1)
 	var bahce_bag := bahce_evi(hayalet_karo.x, hayalet_karo.y) if secili_tip == "bahce" else {}
@@ -1967,7 +1999,7 @@ func xp_ekle(n: float):
 	while float(kayit_v["xp"]) >= xp_gerek(klv()):
 		kayit_v["xp"] = float(kayit_v["xp"]) - xp_gerek(klv()); kayit_v["lv"] = klv() + 1
 		var odul := 10 * klv(); kayit_v["res"]["altin"] = float(kayit_v["res"].get("altin", 0)) + odul
-		bildir("Seviye %d! Ödül: +%d altın" % [klv(), odul])
+		seviye_modal(klv(), odul)
 func siparis_teslim(id):
 	for sp in kayit_v["siparis"]:
 		if sp["id"] == id:
@@ -2011,6 +2043,94 @@ func siparis_ac():
 		var sl := Button.new(); sl.text = "Reddet"; sl.add_theme_font_size_override("font_size", 26); sl.pressed.connect(func(): kayit_v["siparis"] = kayit_v["siparis"].filter(func(x): return x["id"] != id); kayit_yaz_koy(); siparis_ac()); h.add_child(sl)
 	var son := "Liste dolu; teslim ettikçe yeni müşteri gelir." if kayit_v["siparis"].size() >= siparis_max() else "Sıradaki müşteri %d dk içinde gelir." % max(1, int(ceil((float(kayit_v.get("sipSonraki", simdi_ms())) - simdi_ms()) / 60000.0)))
 	etiket(liste, son, 24, Color(0.45, 0.38, 0.3))
+# web xpEkle penceresi: "Seviye N!", ödül ve yeni açılanlar
+func seviye_modal(lv: int, odul: int):
+	var acilan := []
+	for t in BINA_BILGI:
+		if int(BINA_BILGI[t].get("lv", 1)) == lv and not BINA_BILGI[t].get("gizli", false): acilan.append(BINA_BILGI[t]["ad"])
+	for e in VERI["ekin"]:
+		if int(VERI["ekin"][e].get("lv", 1)) == lv: acilan.append(urun_ad(e))
+	var p := PanelContainer.new(); p.set_anchors_preset(Control.PRESET_CENTER); p.custom_minimum_size = Vector2(600, 0); p.grow_horizontal = Control.GROW_DIRECTION_BOTH; p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var st := kutu_stil(Color(1.0, 0.96, 0.86), 30); st.border_color = Color(0.85, 0.65, 0.25); st.set_border_width_all(6); st.content_margin_left = 30; st.content_margin_right = 30; st.content_margin_top = 24; st.content_margin_bottom = 24
+	p.add_theme_stylebox_override("panel", st); _kok_cl.add_child(p)
+	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 14); p.add_child(v)
+	var b := etiket(v, "Seviye %d!" % lv, 54, Color(0.5, 0.33, 0.05)); b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var o := etiket(v, "Ödül: +%d altın" % odul, 30); o.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if acilan.size() > 0:
+		var a := etiket(v, "Yeni açılanlar: " + ", ".join(acilan), 28); a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var bt := Button.new(); bt.text = "Harika!"; bt.add_theme_font_size_override("font_size", 32); bt.custom_minimum_size = Vector2(0, 80)
+	var yb := kutu_stil(Color(0.36, 0.66, 0.26), 22); bt.add_theme_stylebox_override("normal", yb); bt.add_theme_stylebox_override("hover", yb); bt.add_theme_stylebox_override("pressed", yb)
+	bt.pressed.connect(func(): p.queue_free()); v.add_child(bt)
+# --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
+var rehber_kart: PanelContainer
+var rehber_sus := {}
+var rehber_son := {}
+func rehber_adaylar() -> Array:
+	var l := []; var t := simdi_ms()
+	var tl: Array = kayit_v["b"].filter(func(b): return b["tip"] == "tarla" and b.get("insa") == null)
+	var olgun := tl.filter(func(b): return b.get("ekin") is Dictionary and ekin_asama(b) == 2)
+	if olgun.size() > 0: l.append({"k": "hasat", "m": "%d tarla hasada hazır! Topla, tecrübe kazan." % olgun.size(), "d": "Topla", "f": func(): hasat_hepsi(olgun)})
+	var sip: Array = kayit_v.get("siparis", []).filter(func(x): return yeter_hepsi(x["istek"]))
+	if sip.size() > 0: l.append({"k": "sip", "m": "%s siparişini teslim edebilirsin: +%d tecrübe, +%d altın." % [sip[0]["kim"], int(sip[0]["xp"]), int(sip[0]["altin"])], "d": "Siparişler", "f": siparis_ac})
+	for b in kayit_v["b"]:
+		if b.get("insa") != null: continue
+		var bb = b
+		if VERI["tarif"].has(b["tip"]) and b.get("kuyruk", []).any(func(q): return float(q["bit"]) <= t):
+			l.append({"k": "ur%d" % int(b["id"]), "m": "%s ürünler hazır, al." % BINA_BILGI[b["tip"]]["ad"], "d": "Git", "f": func(): bina_odak(bb)}); break
+		if VERI["hayvan"].has(b["tip"]) and b.get("hayvan", []).any(func(h): return h.get("bit") != null and float(h["bit"]) <= t):
+			l.append({"k": "hy%d" % int(b["id"]), "m": "%s ürün hazır (süt, yumurta…), topla." % BINA_BILGI[b["tip"]]["ad"], "d": "Git", "f": func(): bina_odak(bb)}); break
+	for b in kayit_v["b"]:
+		var bb = b
+		if VERI["hayvan"].has(b["tip"]) and b.get("insa") == null and b.get("hayvan", []).any(func(h): return h.get("bit") == null) and sahip(VERI["hayvan"][b["tip"]]["yem"]) > 0:
+			l.append({"k": "ac%d" % int(b["id"]), "m": "%s hayvanlar aç. Besle ki ürün versin." % BINA_BILGI[b["tip"]]["ad"], "d": "Besle", "f": func(): bina_odak(bb)}); break
+	var bos := tl.filter(func(b): return not b.get("ekin") is Dictionary)
+	var b0 = bos[0] if bos.size() > 0 else null
+	if b0 != null: l.append({"k": "ekim", "m": "%d tarla boş duruyor. Ekin ek, hasatta tecrübe kazan." % bos.size(), "d": "Ek", "f": func(): bina_odak(b0)})
+	for b in kayit_v["b"]:
+		var bb = b
+		if VERI["tarif"].has(b["tip"]) and b.get("insa") == null and b.get("kuyruk", []).size() == 0 and VERI["tarif"][b["tip"]].any(func(r): return int(r.get("lv", 0)) <= klv() and yeter_hepsi(r["girdi"])):
+			l.append({"k": "bos%d" % int(b["id"]), "m": "%s boşta. Malzemen var, üretime başlat." % BINA_BILGI[b["tip"]]["ad"], "d": "Git", "f": func(): bina_odak(bb)}); break
+	for tp in BINA_BILGI:
+		var d: Dictionary = BINA_BILGI[tp]
+		if d.get("gizli", false) or int(d.get("lv", 1)) > klv() or sayi(tp) > 0 or not yeter(d.get("cost", {})) or kart_engel(tp) != "": continue
+		if not VERI.get("kategori", []).any(func(k): return tp in k[2]): continue
+		l.append({"k": "yeni" + tp, "m": "Yeni: %s kurabilirsin. Yeni bina köyü büyütür." % d["ad"], "d": "İnşa", "f": insa_ac}); break
+	if tl.size() < 2 + klv() / 3 and yeter(BINA_BILGI["tarla"].get("cost", {})): l.append({"k": "tarla", "m": "Bir tarla daha kur: daha çok hasat, daha hızlı seviye.", "d": "İnşa", "f": insa_ac})
+	if l.is_empty(): l.append({"k": "bekle", "m": "Ekinler büyüyor. Bu arada köyü güzelleştir.", "d": ""})
+	return l.filter(func(a): return float(rehber_sus.get(a["k"], 0)) <= t)
+func bina_odak(b: Dictionary):
+	var m := bina_merkez(b); hedef = Vector3(m.x, 0, m.z); kamera_guncelle(); bina_goster(b)
+func hasat_hepsi(l: Array):
+	for b in l: hasat_s(b)
+func hasat_s(b: Dictionary):
+	if ekin_asama(b) != 2: return
+	var tip: String = b["ekin"]["tip"]; env_ekle(tip, 2); b["ekin"] = null; xp_ekle(float(VERI["urun"].get(tip, {}).get("xp", 0)) * 2); ekin_yenile(b); ust_guncelle(); kayit_yaz_koy()
+func rehber_dugme():
+	if rehber_son.has("f"): rehber_son["f"].call()
+	rehber_sus[rehber_son.get("k", "")] = simdi_ms() + 20000; rehber_guncelle()
+func rehber_guncelle():
+	if rehber_kart == null:
+		rehber_kart = PanelContainer.new(); rehber_kart.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); rehber_kart.offset_top = -330; rehber_kart.offset_bottom = -190; rehber_kart.offset_left = 20; rehber_kart.offset_right = -20
+		rehber_kart.add_theme_stylebox_override("panel", kutu_stil(Color(0.22, 0.15, 0.09, 0.9), 24)); _kok_cl.add_child(rehber_kart)
+		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); rehber_kart.add_child(h)
+		var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(v)
+		var m := etiket(v, "", 25, Color(1, 0.96, 0.88)); m.name = "metin"
+		var x := etiket(v, "", 21, Color(0.96, 0.8, 0.45)); x.name = "xp"
+		var d := Button.new(); d.name = "dug"; d.add_theme_font_size_override("font_size", 24); d.custom_minimum_size = Vector2(130, 60); h.add_child(d)
+		d.pressed.connect(rehber_dugme)
+		var k := Button.new(); k.text = " X "; k.add_theme_font_size_override("font_size", 22); h.add_child(k)
+		k.pressed.connect(func(): rehber_sus[rehber_son.get("k", "")] = simdi_ms() + 180000; rehber_guncelle())
+	var gizli: bool = kayit_v.is_empty() or (insa_panel != null and is_instance_valid(insa_panel)) or bilgi_panel.visible or hayalet != null or kayit_v.get("rehberKapali", false) == true
+	if gizli:
+		rehber_kart.visible = false; return
+	var l := rehber_adaylar()
+	if l.is_empty():
+		rehber_kart.visible = false; return
+	var a: Dictionary = l[0]; rehber_son = a
+	(rehber_kart.find_child("metin", true, false) as Label).text = a["m"]
+	(rehber_kart.find_child("xp", true, false) as Label).text = "Seviye %d: %d tecrübe kaldı" % [klv() + 1, max(0, int(ceil(xp_gerek(klv()) - float(kayit_v.get("xp", 0) if kayit_v.get("xp") != null else 0))))]
+	var dg: Button = rehber_kart.find_child("dug", true, false); dg.text = a["d"]; dg.visible = a["d"] != ""
+	rehber_kart.visible = true
 # kısa bildirim (web toast)
 var _bildirim: Label
 var _cekildi := false
@@ -2285,7 +2405,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -2332,6 +2452,8 @@ func _process(dt):
 					if int(b["id"]) != id: continue
 					if a.begins_with("--yik="): var o := float(kayit_v["res"]["odun"]); bina_yik(b); print("YIK odun ", o, " -> ", kayit_v["res"]["odun"], " var mi ", kayit_v["b"].has(b))
 					else: tasi_basla(b); hayalet_tasi(Vector2i(63, 62)); yerlestir_onay(); print("TASI ", b["x"], ",", b["z"], " karo ", karo_bina.get(62 * WN + 63) == b)
+	if kare == 12 and OS.get_cmdline_user_args().has("--insapanel"): insa_ac()
+	if kare == 12 and OS.get_cmdline_user_args().has("--seviye"): seviye_modal(28, 280)
 	if kare == 12 and OS.get_cmdline_user_args().has("--hesap"):
 		var r := hesapla(); print("HESAP yer ", r["yer"], " evYer ", r["evYer"], " isciKul ", r["isciKul"], " hiz ", r["hiz"])
 	if kare == 12 and OS.get_cmdline_user_args().has("--ambar"):

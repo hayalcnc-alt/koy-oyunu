@@ -25,6 +25,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Ekim paneli: "Bu tarla" / "Boş tarlaların hepsi", seviyeye göre sıralı ekin listesi (kilitliler görünür), gübre %20 hızlandırır (web ekimAc/ek)
 - [x] Bahçe evin yanına kurulur (kapı önü olmaz, her eve bir bahçe, açık tarafı eve bakar), ev yıkılınca bahçe yeniden bağlanır; ev avlusundaki sebze tarhı (4 dk'da 1, en çok 2) otomatik toplanır
 - [x] Dört mevsim (2 oyun günü), kışın kar örtüsü/karlı ağaç ve çatılar/yağan kar, güzün sararan yapraklar, bahar-güz yağmuru, güz fırtınası, yaz kuraklığı (kuyu yoksa ekin 1.4x yavaş), kışın açık tarla 1.6x yavaş; mevsim saat çipinde (web mevsim/hava/mevsimAdim)
+- [x] Rehber kartı (hasat, sipariş, hazır ürün, aç hayvan, boş tarla, boş atölye, yeni bina, tarla öner; X ile 3 dk sus, seviyeye kalan tecrübe), seviye atlama penceresi (ödül + yeni açılanlar), İNŞA çekmecesi kategorilerle ve kilit nedenleriyle (web kartEngel: seviye, nüfus şartı, zaten var, tarla sınırı, bahçe sayısı, boş köylü), alet/kereste maliyetleri ambardan
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -39,7 +40,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
 - [ ] Olaylar/hikâyeler (kısa ve seyrek), gazete
-- [ ] Hedefler/rehber, seviye atlama penceresi
+- [ ] Rehberin ilk açılış (çadır→kuyu→tarla→ev) adımları ve dayıbaşı/bayi/benzinlik önerileri; teraslı ev inşası (glb yok)
 - [ ] Sesler, ayarlar (kalite, ses)
 - [ ] Sohbet / çevrimiçi
 - [ ] Yangın, cenaze/mezarlık, düğün vb. köy olayları
