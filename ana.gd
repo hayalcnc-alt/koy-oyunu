@@ -202,6 +202,7 @@ func web_kaydi_ciz(ad: String):
 		if tip == "tarla": ekin_yenile(b)
 		if tip in HAYVAN_TUR: hayvan_koy(tip, Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI), HAYVAN_TUR[tip][1] + int(b.get("lv", 1)) - 1)
 		if tip == "ev" and ilk_ev == null: ilk_ev = Vector3(b["x"] - YARI, 0, b["z"] - YARI)
+	yol_serit = serit; yol_kasaba = kasaba
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 28)
@@ -404,6 +405,12 @@ func proc_bina(tip: String, m: Vector3, rot: int):
 		for x in [-0.16, 0.16]: E.call(kutu_m(0.12, 0.14, 0.02), "#26343a", Vector3(x, 0.62, 0.275))
 		for k in 6: E.call(kutu_m(0.1, 0.03, 0.08), "#bdb7ac", Vector3(0.38, 0.08 + k * 0.12, -0.25 + k * 0.08))
 
+var yol_serit := {}
+var yol_kasaba := false
+var yol_kok: Node3D = null
+func yol_yenile():
+	if yol_kok: yol_kok.queue_free(); yol_kok = null
+	yol_ciz(yol_serit, arazi_t, yol_kasaba)
 func yol_ciz(serit: Dictionary, t: Array, kasaba: bool):
 	# web yolCiz: toprak yol (tekerlek izleri, çukur, çakıl), ahşap köprü
 	var yon := [[1, 0], [-1, 0], [0, 1], [0, -1]]
@@ -468,7 +475,7 @@ func yol_ciz(serit: Dictionary, t: Array, kasaba: bool):
 				pc_ekle(kutu_m(L if xe else 0.035, 0.035, 0.035 if xe else L), "#8a6241", c + Vector3(0.0 if xe else sg * W / 2, 0.29, sg * W / 2 if xe else 0.0))
 				for o in [-0.45, 0.45]:
 					pc_ekle(sil_m(0.035, 0.04, 0.4, 6), "#5a3d27", c + Vector3(o if xe else sg * W / 2, -0.15, sg * W / 2 if xe else o))
-	add_child(pc_bitir())
+	yol_kok = pc_bitir(); add_child(yol_kok)
 
 # --- köylüler: web insanYap gibi parçalı (gövde/kol/bacak), yollarda yürür
 var koyluler := []
@@ -810,10 +817,12 @@ func insa_ac():
 	var sc := ScrollContainer.new(); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; vb.add_child(sc)
 	var liste := VBoxContainer.new(); liste.size_flags_horizontal = Control.SIZE_EXPAND_FILL; liste.add_theme_constant_override("separation", 8); sc.add_child(liste)
 	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
-	for tip in BINA_BILGI:
+	var sira: Array = YOL_TIP.duplicate(); for k in BINA_BILGI: if not k in YOL_TIP: sira.append(k)
+	for tip in sira:
 		var bb: Dictionary = BINA_BILGI[tip]
-		if bb.get("gizli", false) or tip in ["yol", "asfalt", "kopru", "cit", "lamba", "teras", "cami"]: continue
-		if not FileAccess.file_exists("res://modeller/%s.glb" % tip): continue
+		if bb.get("gizli", false) or tip in ["cit", "lamba", "teras", "cami"]: continue
+		if tip == "kopru" and yol_kasaba: continue
+		if not tip in YOL_TIP and not FileAccess.file_exists("res://modeller/%s.glb" % tip): continue
 		if int(bb.get("lv", 1)) > klv: continue
 		var bt := Button.new(); bt.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		bt.text = "%s   ·   %s" % [bb["ad"], maliyet_yazi(bb.get("cost", {}))]
@@ -825,7 +834,8 @@ func yerlestir_basla(tip: String):
 	if insa_panel: insa_panel.queue_free(); insa_panel = null
 	secili_tip = tip; hayalet_rot = 0
 	if hayalet: hayalet.queue_free()
-	hayalet = Node3D.new(); var s := sahne_yukle(tip); s.scale = Vector3.ONE * float(OLCEK.get(tip, 1.0)); hayalet.add_child(s); add_child(hayalet)
+	hayalet = Node3D.new(); add_child(hayalet)
+	if not tip in YOL_TIP: var s := sahne_yukle(tip); s.scale = Vector3.ONE * float(OLCEK.get(tip, 1.0)); hayalet.add_child(s)
 	var zemin := MeshInstance3D.new(); var bx: int = BOY.get(tip, 1); var pm := PlaneMesh.new(); pm.size = Vector2(bx, bx); zemin.mesh = pm; zemin.position.y = 0.03; zemin.name = "zemin"
 	var zm := StandardMaterial3D.new(); zm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; zm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; zemin.material_override = zm; hayalet.add_child(zemin)
 	hayalet_tasi(Vector2i(int(floor(hedef.x + YARI)), int(floor(hedef.z + YARI))))
@@ -836,7 +846,7 @@ func yer_uygun(x: int, z: int, bx: int) -> bool:
 		for dx in bx:
 			var xx := x + dx; var zz := z + dz
 			if xx < 0 or zz < 0 or xx >= WN or zz >= WN: return false
-			if int(arazi_t[zz * WN + xx]) != 1: return false
+			if int(arazi_t[zz * WN + xx]) != (4 if secili_tip == "kopru" else 1): return false
 			if karo_bina.has(zz * WN + xx): return false
 	return true
 
@@ -855,6 +865,11 @@ func yerlestir_onay():
 	var yid := 1
 	for b in kayit_v["b"]: yid = max(yid, int(b["id"]) + 1)
 	var yeni := {"id": yid, "tip": secili_tip, "x": hayalet_karo.x, "z": hayalet_karo.y, "rot": hayalet_rot, "lv": 1, "insa": {"t": 0.0, "top": float(bb.get("sure", 5)), "hedef": 1}}
+	if secili_tip in YOL_TIP:
+		# yol hemen döşenir; yerleştirme açık kalır, sıradaki karoya dokunup devam edilir
+		yeni["insa"] = null; kayit_v["b"].append(yeni)
+		karo_bina[hayalet_karo.y * WN + hayalet_karo.x] = yeni; yol_serit[hayalet_karo.y * WN + hayalet_karo.x] = yeni
+		yol_yenile(); hayalet_tasi(hayalet_karo); ust_guncelle(); kayit_yaz_koy(); return
 	kayit_v["b"].append(yeni)
 	for dz in bx:
 		for dx in bx: karo_bina[(hayalet_karo.y + dz) * WN + hayalet_karo.x + dx] = yeni
@@ -862,6 +877,18 @@ func yerlestir_onay():
 	bina_koy_dunya(secili_tip, m, hayalet_rot, yid); bina_gorunum(yeni)
 	yerlestir_iptal(); ust_guncelle(); kayit_yaz_koy()
 
+const YOL_TIP := ["yol", "asfalt", "kopru"]
+func yol_eylem(b: Dictionary, klv: int):
+	var k: int = int(b["z"]) * WN + int(b["x"]); var bb := b
+	if b["tip"] == "yol" and klv >= int(BINA_BILGI["asfalt"].get("lv", 12)):
+		var c: Dictionary = BINA_BILGI["asfalt"]["cost"]
+		eylem_dugme("Asfalta çevir ← %s" % maliyet_yazi(c), func():
+			if not yeter(c): return
+			for r in c: kayit_v["res"][r] = float(kayit_v["res"][r]) - float(c[r])
+			bb["tip"] = "asfalt"; yol_yenile(); ust_guncelle(); kayit_yaz_koy(); bina_goster(bb), yeter(c))
+	if b["tip"] != "kopru":
+		eylem_dugme("Yolu kaldır", func():
+			kayit_v["b"].erase(bb); karo_bina.erase(k); yol_serit.erase(k); yol_yenile(); kayit_yaz_koy(); bilgi_panel.visible = false)
 func yerlestir_iptal():
 	if hayalet: hayalet.queue_free(); hayalet = null
 	secili_tip = ""; yer_panel.visible = false
@@ -905,6 +932,7 @@ func eylem_dugme(yazi: String, f: Callable, acik := true):
 func ciftlik_eylem(b: Dictionary):
 	for c in eylem_kutu.get_children(): c.queue_free()
 	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
+	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	if b.get("insa") != null:
 		var ins: Dictionary = b["insa"]
 		var pb := ProgressBar.new(); pb.max_value = float(ins["top"]); pb.value = float(ins["t"]); pb.show_percentage = false; pb.custom_minimum_size = Vector2(0, 26); eylem_kutu.add_child(pb)
