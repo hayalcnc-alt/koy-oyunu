@@ -206,6 +206,7 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 28)
+	tarlaci_koy(v["b"], 24)
 	dag_kur(t)
 	web_orman(t)
 	if ilk_ev != null and hedef_arg == Vector3.ZERO: hedef = ilk_ev
@@ -490,7 +491,7 @@ func insan_yap(ad: String) -> Dictionary:
 	var kL = uzuv.call("kol", -0.056, 0.126, ust); var kR = uzuv.call("kol", 0.056, 0.126, ust)
 	kL.rotation.z = -0.1; kR.rotation.z = 0.1
 	for m in gr.find_children("*", "MeshInstance3D", true, false): m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	return {"gr": gr, "bL": bL, "bR": bR, "kL": kL, "kR": kR}
+	return {"gr": gr, "bL": bL, "bR": bR, "kL": kL, "kR": kR, "ust": ust}
 
 func koylu_koy(serit: Dictionary, n: int):
 	var yollar := []
@@ -516,6 +517,48 @@ func koylu_koy(serit: Dictionary, n: int):
 		ins["karo"] = i; ins["hedef"] = p; ins["faz"] = randf() * TAU; ins["bekle"] = randf() * 2; ins["hiz"] = randf_range(0.22, 0.3)
 		koyluler.append(ins)
 
+# web'deki gibi tarlada çapa yapan köylüler: eğilir, çapayı kaldırıp vurur, ara ara yer değiştirir
+var tarlacilar := []
+func tarlaci_koy(bl: Array, n: int):
+	var l := []
+	for b in bl:
+		if b["tip"] in ["tarla", "bahce"] and b.get("insa") == null: l.append(b)
+	l.sort_custom(func(a, b): return Vector2(a["x"] - YARI, a["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)) < Vector2(b["x"] - YARI, b["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)))
+	var sap := StandardMaterial3D.new(); sap.albedo_color = Color.html("#7a5532"); var dmr := StandardMaterial3D.new(); dmr.albedo_color = Color.html("#8f9aa3"); dmr.metallic = 0.3
+	for k: int in range(min(n, l.size())):
+		var b: Dictionary = l[k]
+		var kadin: bool = k % 2 == 1
+		var ad: String = ("k" if kadin else "e") + str((k * 3 + 1) % 4)
+		if donem_kip != "" and randf() < 0.3: ad += donem_kip
+		var ins := insan_yap(ad)
+		var capa := Node3D.new(); ins.kR.add_child(capa); capa.position = Vector3(0, -0.11, 0.02); capa.rotation.x = 1.2
+		var c1 := MeshInstance3D.new(); var m1 := BoxMesh.new(); m1.size = Vector3(0.012, 0.012, 0.2); c1.mesh = m1; c1.material_override = sap; c1.position.z = 0.06; capa.add_child(c1)
+		var c2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.05, 0.035, 0.008); c2.mesh = m2; c2.material_override = dmr; c2.position = Vector3(0, -0.015, 0.16); capa.add_child(c2)
+		var mrk := Vector3(int(b["x"]) + 0.5 - YARI, 0, int(b["z"]) + 0.5 - YARI)
+		add_child(ins.gr); ins["m"] = mrk
+		ins.gr.position = mrk + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)); ins.gr.rotation.y = randf() * TAU
+		ins["faz"] = randf() * TAU; ins["hiz"] = randf_range(2.6, 3.4); ins["sure"] = randf_range(4, 9); ins["hedef"] = ins.gr.position
+		tarlacilar.append(ins)
+func tarlaci_adim(dt: float):
+	for k in tarlacilar:
+		var gr: Node3D = k.gr
+		var fark: Vector3 = k.hedef - gr.position
+		if fark.length() > 0.03:
+			# birkaç adım öteye yürü
+			gr.position += fark.normalized() * min(fark.length(), 0.2 * dt); gr.rotation.y = lerp_angle(gr.rotation.y, atan2(fark.x, fark.z), dt * 6)
+			k.faz += dt * 9.0; var sl := sin(k.faz) * 0.5
+			k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.ust.rotation.x = lerp(k.ust.rotation.x, 0.0, dt * 5); k.kR.rotation.x = lerp(k.kR.rotation.x, 0.0, dt * 5); k.kL.rotation.x = -sl * 0.6
+			continue
+		k.sure -= dt
+		if k.sure <= 0:
+			k.sure = randf_range(5, 10); k.hedef = k.m + Vector3(randf_range(-0.32, 0.32), 0, randf_range(-0.32, 0.32)); continue
+		# çapa: kalkar (yavaş), iner (hızlı)
+		k.faz += dt * k.hiz
+		var f := fmod(k.faz, TAU) / TAU
+		var v := sin(f / 0.7 * PI * 0.5) if f < 0.7 else cos((f - 0.7) / 0.3 * PI * 0.5)
+		k.ust.rotation.x = 0.35 + 0.15 * (1.0 - v)
+		k.kR.rotation.x = -0.4 - 1.6 * v; k.kL.rotation.x = -0.3 - 1.3 * v
+		k.bL.rotation.x = 0.15; k.bR.rotation.x = -0.1
 func koylu_adim(dt: float):
 	for k in koyluler:
 		var gr: Node3D = k.gr
@@ -779,18 +822,34 @@ func arayuz_kur():
 	VERI = JSON.parse_string(FileAccess.get_file_as_string("res://urun.json"))
 	var cl := CanvasLayer.new(); add_child(cl)
 	# üst panel: köy adı, nüfus, kaynaklar
-	var p := PanelContainer.new(); p.position = Vector2(16, 16); cl.add_child(p)
-	p.add_theme_stylebox_override("panel", kutu_stil(Color(0.29, 0.2, 0.13, 0.9)))
-	ust_etiket = Label.new(); ust_etiket.add_theme_font_size_override("font_size", 28); ust_etiket.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); p.add_child(ust_etiket)
+	# web'deki gibi: seviye rozeti + ad/nüfus, altında ikonlu kaynak kutucukları, sağda saat
+	var ustv := VBoxContainer.new(); ustv.position = Vector2(14, 14); ustv.add_theme_constant_override("separation", 8); cl.add_child(ustv)
+	var r1 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 8); ustv.add_child(r1)
+	var rz := PanelContainer.new(); var rs := kutu_stil(Color(0.96, 0.77, 0.26), 30); rs.border_color = Color(0.35, 0.24, 0.05); rs.set_border_width_all(4); rs.content_margin_left = 14; rs.content_margin_right = 14; rs.content_margin_top = 4; rs.content_margin_bottom = 4
+	rz.add_theme_stylebox_override("panel", rs); r1.add_child(rz)
+	ust_lv = Label.new(); ust_lv.add_theme_font_size_override("font_size", 30); ust_lv.add_theme_color_override("font_color", Color(0.25, 0.16, 0.04)); rz.add_child(ust_lv)
+	var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cip_stil()); r1.add_child(p)
+	ust_etiket = Label.new(); ust_etiket.add_theme_font_size_override("font_size", 27); ust_etiket.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); p.add_child(ust_etiket)
+	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 8); ustv.add_child(r2)
+	for k in ["altin", "odun", "tas", "nufus"]: ust_cip[k] = cip_yap(r2, k)
+	var sp := PanelContainer.new(); sp.add_theme_stylebox_override("panel", cip_stil()); sp.set_anchors_preset(Control.PRESET_TOP_RIGHT); sp.offset_left = -170; sp.offset_right = -14; sp.offset_top = 14; cl.add_child(sp)
+	var sh := HBoxContainer.new(); sp.add_child(sh); sh.add_child(ikon_yap("saat", 34))
+	ust_saat = Label.new(); ust_saat.add_theme_font_size_override("font_size", 27); ust_saat.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); sh.add_child(ust_saat)
 	ust_guncelle()
 	# alt menü: Siparişler, İNŞA, Ambar (şimdilik görsel)
 	var alt := HBoxContainer.new(); alt.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); alt.offset_top = -150; alt.offset_bottom = -30; alt.alignment = BoxContainer.ALIGNMENT_CENTER; alt.add_theme_constant_override("separation", 26); cl.add_child(alt)
-	for d in [["Siparişler", Color(0.98, 0.93, 0.82)], ["İNŞA", Color(0.86, 0.67, 0.3)], ["Ambar", Color(0.98, 0.93, 0.82)]]:
-		var bt := Button.new(); bt.text = d[0]; bt.custom_minimum_size = Vector2(170 if d[0] == "İNŞA" else 150, 110)
-		bt.add_theme_font_size_override("font_size", 30); bt.add_theme_color_override("font_color", Color(0.29, 0.2, 0.13))
-		var sb := kutu_stil(d[1], 55); sb.border_color = Color(0.45, 0.32, 0.18); sb.set_border_width_all(5)
-		bt.add_theme_stylebox_override("normal", sb); bt.add_theme_stylebox_override("hover", sb); bt.add_theme_stylebox_override("pressed", sb)
-		alt.add_child(bt)
+	for d in [["Siparişler", "siparis"], ["İNŞA", "insa"], ["Ambar", "ambar"]]:
+		# web'deki yuvarlak ahşap düğmeler: ikon üstte, yazı altta
+		var buyuk: bool = d[0] == "İNŞA"; var cap := 150 if buyuk else 120
+		var bt := Button.new(); bt.text = d[0]; bt.icon = load("res://ikon/%s.svg" % d[1]); bt.expand_icon = true
+		bt.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP; bt.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		bt.custom_minimum_size = Vector2(cap, cap); bt.add_theme_constant_override("icon_max_width", 64 if buyuk else 52)
+		bt.add_theme_font_size_override("font_size", 24 if buyuk else 21); bt.add_theme_color_override("font_color", Color(1, 0.95, 0.82)); bt.add_theme_color_override("font_pressed_color", Color(1, 0.95, 0.82)); bt.add_theme_color_override("font_hover_color", Color(1, 0.95, 0.82))
+		var sb := kutu_stil(Color(0.62, 0.42, 0.22) if buyuk else Color(0.45, 0.31, 0.19), cap / 2); sb.border_color = Color(0.96, 0.8, 0.45) if buyuk else Color(0.85, 0.7, 0.48); sb.set_border_width_all(5)
+		sb.content_margin_top = 18; sb.shadow_color = Color(0, 0, 0, 0.35); sb.shadow_size = 6; sb.shadow_offset = Vector2(0, 4)
+		var sb2: StyleBoxFlat = sb.duplicate(); sb2.bg_color = sb.bg_color.darkened(0.15)
+		bt.add_theme_stylebox_override("normal", sb); bt.add_theme_stylebox_override("hover", sb); bt.add_theme_stylebox_override("pressed", sb2); bt.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		var kap := CenterContainer.new(); kap.custom_minimum_size = Vector2(150, 150); kap.add_child(bt); alt.add_child(kap)
 		if d[0] == "İNŞA": bt.pressed.connect(insa_ac)
 		if d[0] == "Ambar": bt.pressed.connect(ambar_ac)
 	_kok_cl = cl
@@ -1159,7 +1218,24 @@ func ust_guncelle():
 	var asama := "Şehir" if kayit_v.get("sehir", false) == true else ("İlçe" if kayit_v.get("ilce", false) == true else ("Kasaba" if kayit_v.get("kasaba", false) == true else "Köy"))
 	var ad: String = str(kayit_v.get("ad", "")) if kayit_v.get("ad") != null else ""
 	var nf: int = max((kayit_v.get("nufus", []) as Array).size(), int(floor(float(kayit_v.get("halk", 0) if kayit_v.get("halk") != null else 0))))
-	ust_etiket.text = "%s%s · %s kişi\nAltın %s   Odun %s   Taş %s" % [(ad + " " if ad != "" else ""), asama, noktali(nf), kisalt(float(res.get("altin", 0))), kisalt(float(res.get("odun", 0))), kisalt(float(res.get("tas", 0)))]
+	ust_etiket.text = "%s%s · %s kişi" % [(ad + " " if ad != "" else ""), asama, noktali(nf)]
+	ust_lv.text = str(int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1))
+	ust_cip["altin"].text = kisalt(float(res.get("altin", 0))); ust_cip["odun"].text = kisalt(float(res.get("odun", 0))); ust_cip["tas"].text = kisalt(float(res.get("tas", 0))); ust_cip["nufus"].text = kisalt(float(nf))
+	saat_guncelle()
+func saat_guncelle():
+	if ust_saat == null: return
+	var h := oyun_saati(); ust_saat.text = " %02d:%02d" % [int(h), int(fmod(h, 1.0) * 60)]
+var ust_lv: Label
+var ust_saat: Label
+var ust_cip := {}
+func cip_stil() -> StyleBoxFlat:
+	var s := kutu_stil(Color(0.22, 0.15, 0.09, 0.82), 22); s.content_margin_left = 12; s.content_margin_right = 14; s.content_margin_top = 6; s.content_margin_bottom = 6; return s
+func ikon_yap(ad: String, boy: int) -> TextureRect:
+	var t := TextureRect.new(); t.texture = load("res://ikon/%s.svg" % ad); t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; t.custom_minimum_size = Vector2(boy, boy); return t
+func cip_yap(ata: Control, ad: String) -> Label:
+	var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cip_stil()); ata.add_child(p)
+	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 6); p.add_child(h); h.add_child(ikon_yap(ad, 36))
+	var l := Label.new(); l.add_theme_font_size_override("font_size", 27); l.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); h.add_child(l); return l
 
 func bina_goster(b: Dictionary):
 	var bb: Dictionary = BINA_BILGI.get(b["tip"], {"ad": b["tip"], "acik": "", "maxlv": 1})
@@ -1263,7 +1339,7 @@ var lamba_hale: MultiMeshInstance3D
 func _process(dt):
 	_isik_say -= dt
 	if _isik_say <= 0:
-		gun_isigi(); _isik_say = 1.0
+		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty(): insa_adim(1.0)
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -1288,7 +1364,7 @@ func _process(dt):
 			d.rotation.y = lerp_angle(d.rotation.y, atan2(fark.x, fark.z), dt * 4)
 		else:
 			h.h = Vector3(randf_range(-0.55, 0.55), 0.04, randf_range(-0.1, 0.9)); h.bekle = 1.5 + randf() * 4
-	koylu_adim(dt)
+	koylu_adim(dt); tarlaci_adim(dt)
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
