@@ -23,6 +23,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] İnşaatçılar: en yakın köylüler şantiyeye gider, kazma/kürekle çalışır; çalışan sayısı inşaat hızını belirler (web insaatciAta/insaatAdim/insaAdim)
 - [x] Ağaca/kayaya dokunup işaretleme; boştaki köylü baltayla 30 sn keser/kırar, ağaç kütüğe döner (90 sn sonra çürür), odunu/taşı yola taşır (+12 odun / +10 taş) — web kesimIsaretle/oduncuAdim
 - [x] Ekim paneli: "Bu tarla" / "Boş tarlaların hepsi", seviyeye göre sıralı ekin listesi (kilitliler görünür), gübre %20 hızlandırır (web ekimAc/ek)
+- [x] Bahçe evin yanına kurulur (kapı önü olmaz, her eve bir bahçe, açık tarafı eve bakar), ev yıkılınca bahçe yeniden bağlanır; ev avlusundaki sebze tarhı (4 dk'da 1, en çok 2) otomatik toplanır
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -34,7 +35,6 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
 - [ ] Köylü işleri: köylülerin iş binalarına atanıp gidip gelmesi (k.is), oduncu binası işçilerinin çevredeki ağaçları kesmesi (agacBul), fidan/kıyıda yeni ağaç (kiyiYerBul)
 - [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
-- [ ] Bahçe evin yanına kurulur kuralı (web bahceEvi/bahceBagla, ev avlusu çiti)
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
 - [ ] Mevsim, hava (yağmur, kar, kuraklık)

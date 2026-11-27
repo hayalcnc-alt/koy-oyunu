@@ -1110,7 +1110,43 @@ func yer_uygun(x: int, z: int, bx: int) -> bool:
 				if tt == 0 or (bb.get("su", false) and tt == 4): var_ = true
 		if not var_: return false
 	if bb.get("dag", false) and dag_yonu(x, z) < 0: return false
+	if secili_tip == "bahce" and bahce_evi(x, z, int(tasi_b["id"]) if tasi_b != null else -1).is_empty(): return false
 	return true
+# --- ev bahçesi: web bahceEvi/bahceBagla — bahçe evin yanına (kapı önüne değil), her evin bir bahçesi
+func bahce_evi(x: int, z: int, haric := -1) -> Dictionary:
+	for r in 4:
+		var dx: int = YON4[r][0]; var dz: int = YON4[r][1]
+		var xx := x + dx; var zz := z + dz
+		if xx < 0 or zz < 0 or xx >= WN or zz >= WN: continue
+		var ev = karo_bina.get(zz * WN + xx)
+		if ev == null or ev["tip"] != "ev" or (ev.get("insa") != null and int(ev["insa"].get("hedef", 1)) == 1): continue
+		var kap: Array = YON4[((int(ev.get("rot", 0)) % 4) + 4) % 4]
+		if int(kap[0]) == -dx and int(kap[1]) == -dz: continue  # evin kapı önüne olmaz
+		var evid = ev["id"]
+		if kayit_v["b"].any(func(q): return q["tip"] == "bahce" and q.get("ev") == evid and int(q["id"]) != haric): continue
+		return {"ev": ev, "rot": r}
+	return {}
+func bahce_bagla():
+	for b in kayit_v["b"]:
+		if b["tip"] != "bahce": continue
+		var bb_ = b
+		var bagli: bool = kayit_v["b"].any(func(q): return q["id"] == bb_.get("ev") and abs(int(q["x"]) - int(bb_["x"])) + abs(int(q["z"]) - int(bb_["z"])) == 1)
+		if not bagli:
+			var e := bahce_evi(int(b["x"]), int(b["z"]), int(b["id"]))
+			b["ev"] = e["ev"]["id"] if not e.is_empty() else null
+			if not e.is_empty(): b["rot"] = e["rot"]
+# evin avlusundaki küçük sebze tarhı (web tarhSay/tarhTopla): 4 dakikada bir, en çok 2
+const TARH_SURE := 240.0
+const TARH_MAX := 2
+const TARH_URUN := ["domates", "biber", "salatalik", "sogan", "patlican"]
+func tarh_say(ev: Dictionary) -> int:
+	if not ev.get("tarh") is Dictionary: ev["tarh"] = {"son": simdi_ms()}
+	return min(TARH_MAX, int(floor((simdi_ms() - float(ev["tarh"]["son"])) / (TARH_SURE * 1000.0))))
+func tarh_topla(ev: Dictionary) -> int:
+	var n := tarh_say(ev)
+	if n <= 0: return 0
+	var u: String = TARH_URUN[int(ev["id"]) % TARH_URUN.size()]; env_ekle(u, n)
+	ev["tarh"]["son"] = simdi_ms(); xp_ekle(float(VERI["urun"].get(u, {}).get("xp", 0)) * n); return n
 const YON4 := [[0, 1], [1, 0], [0, -1], [-1, 0]]
 func dag_yonu(x: int, z: int) -> int:
 	for r in 4:
@@ -1155,6 +1191,8 @@ func yerlestir_onay():
 	for kk in bb.get("cost", {}): res[kk] = float(res[kk]) - float(bb["cost"][kk])
 	var yid := 1
 	for b in kayit_v["b"]: yid = max(yid, int(b["id"]) + 1)
+	var bahce_bag := bahce_evi(hayalet_karo.x, hayalet_karo.y) if secili_tip == "bahce" else {}
+	if not bahce_bag.is_empty(): hayalet_rot = int(bahce_bag["rot"])
 	if not secili_tip in ["cit", "lamba"] and not secili_tip in YOL_TIP:
 		temizle_karolar(hayalet_karo.x, hayalet_karo.y, bx)
 		if bb.get("su", false) or bb.get("deniz", false): hayalet_rot = su_yonu(hayalet_karo.x, hayalet_karo.y, bb.get("deniz", false))
@@ -1169,6 +1207,7 @@ func yerlestir_onay():
 		yeni["insa"] = null; kayit_v["b"].append(yeni)
 		karo_bina[hayalet_karo.y * WN + hayalet_karo.x] = yeni; yol_serit[hayalet_karo.y * WN + hayalet_karo.x] = yeni
 		yol_yenile(); hayalet_tasi(hayalet_karo); ust_guncelle(); kayit_yaz_koy(); return
+	if not bahce_bag.is_empty(): yeni["ev"] = bahce_bag["ev"]["id"]
 	kayit_v["b"].append(yeni)
 	for dz in bx:
 		for dx in bx: karo_bina[(hayalet_karo.y + dz) * WN + hayalet_karo.x + dx] = yeni
@@ -1245,6 +1284,10 @@ func bina_yik(b: Dictionary):
 	karo_isle(b, false); bina_kaldir_dunya(b); kayit_v["b"].erase(b)
 	if b["tip"] == "cit": yol_serit.erase(int(b["z"]) * WN + int(b["x"]))
 	if b["tip"] in ["cit", "lamba"]: yol_yenile()
+	if b["tip"] == "ev":
+		for q in kayit_v["b"]:
+			if q["tip"] == "bahce" and q.get("ev") == b["id"]: q["ev"] = null
+		bahce_bagla()
 	bilgi_panel.visible = false; hesapla(); ust_guncelle(); kayit_yaz_koy(); bildir("%s yıkıldı" % BINA_BILGI[b["tip"]]["ad"])
 func bina_dondur(b: Dictionary):
 	b["rot"] = (int(b.get("rot", 0)) + 1) % 4
@@ -1507,6 +1550,7 @@ func oto_topla():
 			elif VERI["tarif"].has(t) and b.get("kuyruk") is Array: n_top += uretim_topla_s(b)
 			elif VERI.get("agac", {}).has(t) and b.get("meyve") != null: n_top += agac_topla_s(b)
 			elif VERI.get("topla", {}).has(t): n_top += kovan_topla_s(b)
+			elif t == "ev": n_top += tarh_topla(b)
 	hesapla(); oto_uretim()
 	if not mesaide():
 		for b in kayit_v["b"]:
