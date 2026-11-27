@@ -35,6 +35,7 @@ var saat_arg := -1.0
 var dokun_arg := Vector2(-1, -1)
 var insa_arg := ""
 var onay_arg := false
+var dugme_arg := false
 const GUN_SN := 2880.0
 const SAAT_SN := 120.0
 const GUNDUZ_PAY := 0.8
@@ -49,6 +50,7 @@ func _ready():
 		if a.begins_with("--dokun="): var q = a.substr(8).split(","); dokun_arg = Vector2(float(q[0]), float(q[1]))
 		if a.begins_with("--insa="): insa_arg = a.substr(7)
 		if a.begins_with("--onay"): onay_arg = true
+		if a.begins_with("--dugme"): dugme_arg = true
 		if a.begins_with("--saat="): saat_arg = float(a.substr(7))
 		if a.begins_with("--kayit="): kayit_adi = a.substr(8)
 		if a.begins_with("--mesafe="): mesafe_arg = float(a.substr(9))
@@ -189,7 +191,7 @@ func web_kaydi_ciz(ad: String):
 		if not FileAccess.file_exists("res://modeller/%s.glb" % model): continue
 		var boy: int = BOY.get(tip, 1)
 		bina_koy_dunya(model, Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI), int(b.get("rot", 0)), int(b["id"]))
-		if tip == "tarla" and b.get("ekin") is Dictionary: ekin_koy(b["ekin"], Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI))
+		if tip == "tarla": ekin_yenile(b)
 		if tip in HAYVAN_TUR: hayvan_koy(tip, Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI), HAYVAN_TUR[tip][1] + int(b.get("lv", 1)) - 1)
 		if tip == "ev" and ilk_ev == null: ilk_ev = Vector3(b["x"] - YARI, 0, b["z"] - YARI)
 	yol_ciz(serit, t, kasaba)
@@ -259,7 +261,7 @@ func ekin_mesh(tip: String, as_: int) -> Mesh:
 	_ekin[k] = me
 	return me
 
-func ekin_koy(e: Dictionary, merkez: Vector3):
+func ekin_koy(e: Dictionary, merkez: Vector3, kap: Node3D = null):
 	var simdi := Time.get_unix_time_from_system() * 1000.0
 	var f: float = (simdi - float(e["bas"])) / max(1.0, float(e["bit"]) - float(e["bas"]))
 	var as_ := 2 if f >= 1 else (1 if f >= 0.45 else 0)
@@ -271,9 +273,12 @@ func ekin_koy(e: Dictionary, merkez: Vector3):
 			for c in n:
 				var j := r * 7 + c * 3 + tip.length()
 				var p := Vector3(-0.42 + ara * (c + 0.5) + sin(j) * ara * 0.08, 0.07, -0.42 + ara * (r + 0.5) + cos(j) * ara * 0.08)
-				model_koy(ad, merkez + p, sc, j * 1.37)
+				var mk := model_koy(ad, merkez + p, sc, j * 1.37)
+				if kap and mk: mk.reparent(kap)
 		return
-	var mi := MeshInstance3D.new(); mi.mesh = ekin_mesh(tip, as_); mi.position = merkez; add_child(mi)
+	var mi := MeshInstance3D.new(); mi.mesh = ekin_mesh(tip, as_); mi.position = merkez
+	if kap: kap.add_child(mi)
+	else: add_child(mi)
 
 func hayvan_koy(tip: String, merkez: Vector3, n: int):
 	# web'deki gibi: ağıl/ahır/kümes içinde dolaşan hayvanlar (merkeze göre ±0.55, -0.1..0.9)
@@ -726,6 +731,7 @@ func kutu_stil(renk: Color, yaricap := 18) -> StyleBoxFlat:
 
 func arayuz_kur():
 	BINA_BILGI = JSON.parse_string(FileAccess.get_file_as_string("res://bina.json"))
+	VERI = JSON.parse_string(FileAccess.get_file_as_string("res://urun.json"))
 	var cl := CanvasLayer.new(); add_child(cl)
 	# üst panel: köy adı, nüfus, kaynaklar
 	var p := PanelContainer.new(); p.position = Vector2(16, 16); cl.add_child(p)
@@ -741,6 +747,7 @@ func arayuz_kur():
 		bt.add_theme_stylebox_override("normal", sb); bt.add_theme_stylebox_override("hover", sb); bt.add_theme_stylebox_override("pressed", sb)
 		alt.add_child(bt)
 		if d[0] == "İNŞA": bt.pressed.connect(insa_ac)
+		if d[0] == "Ambar": bt.pressed.connect(ambar_ac)
 	_kok_cl = cl
 	yer_panel = HBoxContainer.new(); yer_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); yer_panel.offset_top = -300; yer_panel.offset_bottom = -180; yer_panel.alignment = BoxContainer.ALIGNMENT_CENTER; yer_panel.add_theme_constant_override("separation", 20); yer_panel.visible = false; cl.add_child(yer_panel)
 	for d in [["İptal", Color(0.85, 0.35, 0.3)], ["Döndür", Color(0.98, 0.93, 0.82)], ["Yerleştir", Color(0.35, 0.7, 0.35)]]:
@@ -751,13 +758,14 @@ func arayuz_kur():
 		elif d[0] == "Döndür": bt.pressed.connect(func(): hayalet_rot = (hayalet_rot + 1) % 4; hayalet_tasi(hayalet_karo))
 		else: bt.pressed.connect(yerlestir_onay)
 	# bina bilgi paneli (dokununca alttan açılır)
-	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -470; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
+	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -620; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
 	bilgi_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.97), 26)); bilgi_panel.visible = false; cl.add_child(bilgi_panel)
 	var vb := VBoxContainer.new(); vb.add_theme_constant_override("separation", 12); bilgi_panel.add_child(vb)
 	var ust := HBoxContainer.new(); vb.add_child(ust)
 	bilgi_baslik = Label.new(); bilgi_baslik.add_theme_font_size_override("font_size", 40); bilgi_baslik.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bilgi_baslik.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bilgi_baslik)
 	var kapat := Button.new(); kapat.text = " X "; kapat.add_theme_font_size_override("font_size", 32); kapat.pressed.connect(func(): bilgi_panel.visible = false); ust.add_child(kapat)
 	bilgi_yazi = Label.new(); bilgi_yazi.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; bilgi_yazi.add_theme_font_size_override("font_size", 28); bilgi_yazi.add_theme_color_override("font_color", Color(0.3, 0.24, 0.18)); vb.add_child(bilgi_yazi)
+	eylem_kutu = VBoxContainer.new(); eylem_kutu.add_theme_constant_override("separation", 8); vb.add_child(eylem_kutu)
 
 # --- İNŞA: liste → yerleştirme önizlemesi → onay; kaynak düşülür, köy kaydedilir
 var insa_panel: PanelContainer
@@ -854,6 +862,115 @@ func kayit_yaz_koy():
 	var f := FileAccess.open("user://koy.json", FileAccess.WRITE)
 	if f: f.store_string(JSON.stringify(kayit_v))
 
+# --- çiftlik: ekim/hasat, hayvan besle/topla, ambar
+var VERI := {}
+var tarla_kap := {}   # bina id -> Node3D (ekin görseli)
+var tarla_as := {}    # bina id -> aşama
+func simdi_ms() -> float: return Time.get_unix_time_from_system() * 1000.0
+func ekin_asama(b: Dictionary) -> int:
+	var e = b.get("ekin")
+	if not e is Dictionary: return -1
+	var f: float = (simdi_ms() - float(e["bas"])) / max(1.0, float(e["bit"]) - float(e["bas"]))
+	return 2 if f >= 1 else (1 if f >= 0.45 else 0)
+func ekin_yenile(b: Dictionary):
+	var id := int(b["id"]); var as_ := ekin_asama(b)
+	if tarla_as.get(id, -9) == as_ and tarla_kap.has(id): return
+	tarla_as[id] = as_
+	if tarla_kap.has(id): tarla_kap[id].queue_free()
+	var kap := Node3D.new(); add_child(kap); tarla_kap[id] = kap
+	if as_ >= 0:
+		var boy: int = BOY.get("tarla", 1)
+		var e: Dictionary = (b["ekin"] as Dictionary).duplicate(); e["bas"] = 0; e["bit"] = 1
+		# aşamayı ekin_koy'a doğrudan geçirmek için zamanı ayarla
+		var sim := simdi_ms(); e["bas"] = sim - (0.0 if as_ == 0 else (0.5 if as_ == 1 else 1.0)) * 1000.0; e["bit"] = e["bas"] + 1000.0
+		ekin_koy(e, Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI), kap)
+func env_ekle(k: String, n: int):
+	var env: Dictionary = kayit_v.get("env", {}); kayit_v["env"] = env
+	env[k] = int(env.get(k, 0)) + n
+	if int(env[k]) <= 0: env.erase(k)
+func urun_ad(k: String) -> String: return str(VERI.get("urun", {}).get(k, {}).get("ad", k))
+var eylem_kutu: VBoxContainer
+func eylem_dugme(yazi: String, f: Callable, acik := true):
+	var bt := Button.new(); bt.text = yazi; bt.add_theme_font_size_override("font_size", 28); bt.disabled = not acik; bt.pressed.connect(f); eylem_kutu.add_child(bt)
+func ciftlik_eylem(b: Dictionary):
+	for c in eylem_kutu.get_children(): c.queue_free()
+	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
+	if b["tip"] == "tarla":
+		var as_ := ekin_asama(b)
+		if as_ < 0:
+			var sc := ScrollContainer.new(); sc.custom_minimum_size = Vector2(0, 220); eylem_kutu.add_child(sc)
+			var vb := VBoxContainer.new(); vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sc.add_child(vb)
+			for tip in VERI["ekin"]:
+				var e: Dictionary = VERI["ekin"][tip]
+				if int(e["lv"]) > klv: continue
+				var bt := Button.new(); bt.text = "Ek: %s · %d altın · %s" % [urun_ad(tip), int(e["tohum"]), sure_yazi(int(e["sure"]))]; bt.add_theme_font_size_override("font_size", 26)
+				bt.disabled = float(kayit_v["res"].get("altin", 0)) < float(e["tohum"])
+				bt.pressed.connect(func(): ek(b, tip)); vb.add_child(bt)
+		elif as_ < 2:
+			var kalan: float = (float(b["ekin"]["bit"]) - simdi_ms()) / 1000.0
+			eylem_dugme("%s büyüyor · %s kaldı" % [urun_ad(b["ekin"]["tip"]), sure_yazi(int(kalan))], func(): pass, false)
+		else:
+			eylem_dugme("Hasat et (+2 %s)" % urun_ad(b["ekin"]["tip"]), func(): hasat(b))
+	elif VERI["hayvan"].has(b["tip"]):
+		var H: Dictionary = VERI["hayvan"][b["tip"]]
+		hayvan_hazirla(b)
+		var ac := 0; var uret := 0; var hazir := 0; var t := simdi_ms()
+		for h in b["hayvan"]:
+			if h.get("bit") == null: ac += 1
+			elif float(h["bit"]) <= t: hazir += 1
+			else: uret += 1
+		var yem_var := int(kayit_v.get("env", {}).get(H["yem"], 0))
+		eylem_dugme("%d %s: %d aç, %d üretiyor, %d hazır" % [b["hayvan"].size(), H["ad"], ac, uret, hazir], func(): pass, false)
+		eylem_dugme("Besle (%s: %d var)" % [urun_ad(H["yem"]), yem_var], func(): besle(b), ac > 0 and yem_var > 0)
+		eylem_dugme("Topla (+%d %s)" % [hazir, urun_ad(H["urun"])], func(): hayvan_topla(b), hazir > 0)
+func sure_yazi(sn: int) -> String:
+	if sn >= 3600: return "%d sa %d dk" % [sn / 3600, (sn % 3600) / 60]
+	if sn >= 60: return "%d dk %d sn" % [sn / 60, sn % 60]
+	return "%d sn" % max(0, sn)
+func ek(b: Dictionary, tip: String):
+	var e: Dictionary = VERI["ekin"][tip]
+	if float(kayit_v["res"].get("altin", 0)) < float(e["tohum"]) or b.get("ekin") is Dictionary: return
+	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
+	var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0}
+	ekin_yenile(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+func hasat(b: Dictionary):
+	if ekin_asama(b) != 2: return
+	env_ekle(b["ekin"]["tip"], 2); b["ekin"] = null
+	ekin_yenile(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+func hayvan_hazirla(b: Dictionary):
+	var H: Dictionary = VERI["hayvan"][b["tip"]]
+	if not b.get("hayvan") is Array: b["hayvan"] = []
+	var n: int = int(H["adet"]) + int(b.get("lv", 1)) - 1
+	while b["hayvan"].size() < n: b["hayvan"].append({"bit": null})
+func besle(b: Dictionary):
+	var H: Dictionary = VERI["hayvan"][b["tip"]]; var env: Dictionary = kayit_v.get("env", {})
+	for h in b["hayvan"]:
+		if h.get("bit") != null: continue
+		if int(env.get(H["yem"], 0)) < 1: break
+		env_ekle(H["yem"], -1); h["bit"] = simdi_ms() + float(H["sure"]) * 1000.0
+	kayit_yaz_koy(); bina_goster(b)
+func hayvan_topla(b: Dictionary):
+	var H: Dictionary = VERI["hayvan"][b["tip"]]; var t := simdi_ms(); var n := 0
+	for h in b["hayvan"]:
+		if h.get("bit") != null and float(h["bit"]) <= t: h["bit"] = null; n += 1
+	env_ekle(H["urun"], n); kayit_yaz_koy(); bina_goster(b)
+func ambar_ac():
+	if insa_panel: insa_panel.queue_free()
+	insa_panel = PanelContainer.new(); insa_panel.set_anchors_preset(Control.PRESET_FULL_RECT); insa_panel.offset_top = 300; insa_panel.offset_bottom = -170; insa_panel.offset_left = 16; insa_panel.offset_right = -16
+	insa_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.98), 26)); _kok_cl.add_child(insa_panel)
+	var vb := VBoxContainer.new(); insa_panel.add_child(vb)
+	var ust := HBoxContainer.new(); vb.add_child(ust)
+	var bl := Label.new(); bl.text = "Ambar"; bl.add_theme_font_size_override("font_size", 42); bl.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bl)
+	var kp := Button.new(); kp.text = " X "; kp.add_theme_font_size_override("font_size", 32); kp.pressed.connect(func(): insa_panel.queue_free(); insa_panel = null); ust.add_child(kp)
+	var sc := ScrollContainer.new(); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; vb.add_child(sc)
+	var gl := GridContainer.new(); gl.columns = 2; gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sc.add_child(gl)
+	var env: Dictionary = kayit_v.get("env", {})
+	var anahtar := env.keys(); anahtar.sort()
+	for k in anahtar:
+		var l := Label.new(); l.text = "%s: %s" % [urun_ad(k), kisalt(float(env[k]))]; l.add_theme_font_size_override("font_size", 28); l.add_theme_color_override("font_color", Color(0.3, 0.22, 0.15)); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; gl.add_child(l)
+	if anahtar.is_empty():
+		var l := Label.new(); l.text = "Ambar boş."; l.add_theme_font_size_override("font_size", 28); gl.add_child(l)
+
 func ust_guncelle():
 	if ust_etiket == null: return
 	if kayit_v.is_empty(): ust_etiket.text = "Köy · 42 kişi    Odun 120   Taş 80   Altın 65"; return
@@ -870,6 +987,7 @@ func bina_goster(b: Dictionary):
 	if ml > 1: yildiz = "   " + "★".repeat(min(lv, 6)) + "☆".repeat(max(0, min(ml, 6) - lv))
 	bilgi_baslik.text = str(bb["ad"]) + yildiz
 	bilgi_yazi.text = str(bb["acik"])
+	ciftlik_eylem(b)
 	bilgi_panel.visible = true
 
 var _dokunma_bas := Vector2.ZERO
@@ -962,7 +1080,11 @@ var lamba_yer := []
 var lamba_hale: MultiMeshInstance3D
 func _process(dt):
 	_isik_say -= dt
-	if _isik_say <= 0: gun_isigi(); _isik_say = 1.0
+	if _isik_say <= 0:
+		gun_isigi(); _isik_say = 1.0
+		if not kayit_v.is_empty():
+			for b in kayit_v["b"]:
+				if b["tip"] == "tarla" and b.get("ekin") is Dictionary: ekin_yenile(b)
 	for i in inekler:
 		i.bekle -= dt
 		var d: Node3D = i.d
@@ -987,6 +1109,10 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 16 and dugme_arg:
+		var d: Array = eylem_kutu.get_children().filter(func(c): return c is Button and not c.disabled)
+		if d.size() > 0: d[0].emit_signal("pressed")
+		print("DUGME env=", kayit_v.get("env", {}).get("misir"), " havuc=", kayit_v.get("env", {}).get("havuc"))
 	if kare == 14 and onay_arg:
 		var once: int = kayit_v["b"].size(); yerlestir_onay(); print("INSA SONUC ", once, " -> ", kayit_v["b"].size(), " kayit=", FileAccess.file_exists("user://koy.json"))
 	if ekran_yolu != "" and kare == 20:
