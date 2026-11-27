@@ -1261,21 +1261,30 @@ func hayvan_topla(b: Dictionary):
 		if h.get("bit") != null and float(h["bit"]) <= t: h["bit"] = null; n += 1
 	env_ekle(H["urun"], n); kayit_yaz_koy(); bina_goster(b)
 func ambar_ac():
-	if insa_panel: insa_panel.queue_free()
-	insa_panel = PanelContainer.new(); insa_panel.set_anchors_preset(Control.PRESET_FULL_RECT); insa_panel.offset_top = 300; insa_panel.offset_bottom = -170; insa_panel.offset_left = 16; insa_panel.offset_right = -16
-	insa_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.98), 26)); _kok_cl.add_child(insa_panel)
-	var vb := VBoxContainer.new(); insa_panel.add_child(vb)
-	var ust := HBoxContainer.new(); vb.add_child(ust)
-	var bl := Label.new(); bl.text = "Ambar"; bl.add_theme_font_size_override("font_size", 42); bl.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bl)
-	var kp := Button.new(); kp.text = " X "; kp.add_theme_font_size_override("font_size", 32); kp.pressed.connect(func(): insa_panel.queue_free(); insa_panel = null); ust.add_child(kp)
-	var sc := ScrollContainer.new(); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; vb.add_child(sc)
-	var gl := GridContainer.new(); gl.columns = 2; gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sc.add_child(gl)
+	# web ambarCiz: ürün, adet, tane fiyatı; "Sat 1" ve "Hepsi"
 	var env: Dictionary = kayit_v.get("env", {})
-	var anahtar := env.keys(); anahtar.sort()
+	var top := 0
+	for k in env: top += int(env[k])
+	var liste := panel_ac("Ambar · %s ürün" % noktali(top), "ambar")
+	var anahtar := env.keys().filter(func(x): return int(env[x]) > 0); anahtar.sort()
 	for k in anahtar:
-		var l := Label.new(); l.text = "%s: %s" % [urun_ad(k), kisalt(float(env[k]))]; l.add_theme_font_size_override("font_size", 28); l.add_theme_color_override("font_color", Color(0.3, 0.22, 0.15)); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; gl.add_child(l)
-	if anahtar.is_empty():
-		var l := Label.new(); l.text = "Ambar boş."; l.add_theme_font_size_override("font_size", 28); gl.add_child(l)
+		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); liste.add_child(h)
+		var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(v)
+		var fiyat := int(VERI["urun"].get(k, {}).get("fiyat", 1))
+		etiket(v, urun_ad(k), 28, Color(0.25, 0.17, 0.1))
+		etiket(v, "%s adet · tanesi %d altın" % [noktali(int(env[k])), fiyat], 22, Color(0.45, 0.38, 0.3))
+		var kk: String = k
+		for d in [["Sat 1", 1], ["Hepsi", -1]]:
+			var bt := Button.new(); bt.text = d[0]; bt.add_theme_font_size_override("font_size", 24); bt.custom_minimum_size = Vector2(110, 60)
+			var n: int = d[1]; bt.pressed.connect(func(): ambar_sat(kk, n)); h.add_child(bt)
+	if anahtar.is_empty(): etiket(liste, "Ambar boş. Tarla ek, hayvan besle!")
+func ambar_sat(k: String, n: int):
+	var env: Dictionary = kayit_v.get("env", {})
+	if int(env.get(k, 0)) <= 0: return
+	if n < 0: n = int(env[k])
+	harca(k, n); var g := n * int(VERI["urun"].get(k, {}).get("fiyat", 1))
+	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + g
+	bildir("%d %s satıldı: +%d altın" % [n, urun_ad(k).to_lower(), g]); ust_guncelle(); kayit_yaz_koy(); ambar_ac()
 
 # --- siparişler: web siparisUret/siparisAdim/siparisTeslim ile aynı kurallar
 const SIP_OMUR := 45 * 60000.0
@@ -1567,6 +1576,10 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 12 and OS.get_cmdline_user_args().has("--ambar"):
+		if OS.get_cmdline_user_args().has("--sat"):
+			var once := float(kayit_v["res"]["altin"]); ambar_sat("un", -1); print("SAT altin ", once, " -> ", kayit_v["res"]["altin"], " un ", kayit_v["env"].get("un"))
+		ambar_ac()
 	if kare == 12 and OS.get_cmdline_user_args().has("--sip"):
 		siparis_adim(); while kayit_v["siparis"].size() < 3: siparis_uret()
 		# test: ilk siparişi karşılayacak kadar malı ambara koy
