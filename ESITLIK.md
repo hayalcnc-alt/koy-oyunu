@@ -36,7 +36,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
     Geçişten önce web'e "yeni sürüme geçerken köy kodunu not al" uyarısı. Google'a bağlı hesaplar için Google ile giriş ayrıca.
   - Canlı Firebase'de deneme hesabı açmak kullanıcı onayı bekliyor.
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
-- [ ] Köylü işleri: köylülerin iş binalarına atanıp gidip gelmesi (k.is), oduncu binası işçilerinin çevredeki ağaçları kesmesi (agacBul), fidan/kıyıda yeni ağaç (kiyiYerBul)
+- [x] Köylü işleri: köylü sayısı iş gücü kadar (en çok 40), iş yeri slotları sırayla (k.is, dükkânlar mesai dışı boş), işçi işyerine gidip çalışır/eve uğrar, balıkçı olta tutar; oduncu işçileri agacBul ile çevredeki ağacı keser, keresteciye/oduncuya taşır (12+3·lv); kütük çürüyünce kıyıda fidan, fidan 150 sn sonra ağaç; kapalıyken geçen süre odun/taş (yokkenGecen, en çok 4 saat)
 - [ ] Memnuniyette makine işsizliği (tarimDurum), sanayi dumanı (sanayiDenge), çöp, yangın, cenaze yası
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada

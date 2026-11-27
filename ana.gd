@@ -94,7 +94,7 @@ func web_kaydi_ciz(ad: String):
 	if not v is Dictionary: push_error("kayıt okunamadı"); return
 	kayit_v = v
 	if v.get("zaman") != null:  # kapalıyken geçen süre inşaata sayılır
-		var gec: float = max(0.0, (simdi_ms() - float(v["zaman"])) / 1000.0)
+		var gec: float = max(0.0, (simdi_ms() - float(v["zaman"])) / 1000.0); _yokken = gec
 		for b in v["b"]:
 			if b.get("insa") is Dictionary: b["insa"]["t"] = float(b["insa"]["t"]) + gec
 	for b in v["b"]:
@@ -208,7 +208,7 @@ func web_kaydi_ciz(ad: String):
 	yol_serit = serit; yol_kasaba = kasaba
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
-	koylu_koy(serit, 28)
+	koylu_koy(serit, 0)
 	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
 	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
@@ -522,17 +522,77 @@ func koylu_koy(serit: Dictionary, n: int):
 		_yol_komsu[i] = l
 	# kameraya yakın yollardan başla
 	yollar.sort_custom(func(a, b): return Vector2(a % WN - YARI, a / WN - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)) < Vector2(b % WN - YARI, b / WN - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)))
-	for k in n:
-		var kadin := k % 2 == 1
-		var ad := ("k" if kadin else "e") + str((k >> 1) % 4)
-		if donem_kip != "" and randf() < (0.85 if donem_kip == "s" else 0.55): ad += donem_kip
-		var ins := insan_yap(ad)
-		var i: int = yollar[min(yollar.size() - 1, k * 3)]
-		var p := Vector3(i % WN + 0.5 - YARI + randf_range(-0.2, 0.2), 0, i / WN + 0.5 - YARI + randf_range(-0.2, 0.2))
-		add_child(ins.gr); ins.gr.position = p
-		ins["karo"] = i; ins["hedef"] = p; ins["faz"] = randf() * TAU; ins["bekle"] = randf() * 2; ins["hiz"] = randf_range(0.22, 0.3)
-		koyluler.append(ins)
-
+	_yollar = yollar
+	for k in n: koylu_ekle()
+var _yollar := []
+func koylu_ekle():
+	if _yollar.is_empty(): return
+	var k := koyluler.size()
+	var kadin := k % 2 == 1
+	var ad := ("k" if kadin else "e") + str((k >> 1) % 4)
+	if donem_kip != "" and randf() < (0.85 if donem_kip == "s" else 0.55): ad += donem_kip
+	var ins := insan_yap(ad)
+	var i: int = _yollar[min(_yollar.size() - 1, k * 3)]
+	var p := Vector3(i % WN + 0.5 - YARI + randf_range(-0.2, 0.2), 0, i / WN + 0.5 - YARI + randf_range(-0.2, 0.2))
+	add_child(ins.gr); ins.gr.position = p
+	ins["karo"] = i; ins["hedef"] = p; ins["faz"] = randf() * TAU; ins["bekle"] = randf() * 2; ins["hiz"] = randf_range(0.22, 0.3)
+	koyluler.append(ins)
+# web koyluGuncelle: köylü sayısı iş gücü kadar (en çok 40); iş yeri slotları sırayla dağıtılır (k.is)
+func koylu_ayarla():
+	var istenen: int = min(40, int(sonuc.get("yer", 0)))
+	while koyluler.size() < istenen and not _yollar.is_empty(): koylu_ekle()
+	while koyluler.size() > istenen:
+		var k: Dictionary = koyluler.pop_back(); oduncu_birak(k); k.gr.queue_free()
+	var slotlar := []; var mesai := mesaide()
+	for b in kayit_v.get("b", []):
+		var c := calisan(b)
+		if c > 0 and (mesai or not b["tip"] in DUKKAN):
+			for q in c: slotlar.append(b)
+	for i in koyluler.size():
+		var k: Dictionary = koyluler[i]
+		var yeni = slotlar[i] if i < slotlar.size() else null
+		var eski = k.get("isB")
+		if (int(yeni["id"]) if yeni != null else 0) != (int(eski["id"]) if eski != null else 0):
+			oduncu_birak(k); k["bekle"] = 0.0; k.erase("isD")
+			if yeni == null: k.erase("isB")
+			else: k["isB"] = yeni
+func kapi_poz(b: Dictionary) -> Vector3:
+	var s: float = BOY.get(b["tip"], 1); var a: float = int(b.get("rot", 0)) * PI / 2; var d := s / 2 + 0.15; var m := bina_merkez(b)
+	return Vector3(m.x + sin(a) * d, 0, m.z + cos(a) * d)
+func koylu_yuru(k: Dictionary, h: Vector3, dt: float) -> bool:
+	var gr: Node3D = k.gr; var f: Vector3 = h - gr.position; f.y = 0
+	if f.length() < 0.04: return true
+	gr.position += f.normalized() * min(f.length(), float(k.hiz) * 1.6 * dt); gr.rotation.y = lerp_angle(gr.rotation.y, atan2(f.x, f.z), dt * 8)
+	k.faz += dt * 9.0; var sl := sin(k.faz) * 0.5
+	k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8; k.ust.rotation.x = 0
+	return false
+# web: işçi işyerinin yanına gider, 5-11 sn çalışır, evine uğrar, döner (balıkçı kıyıda olta tutar)
+func is_adim(k: Dictionary, dt: float):
+	var b: Dictionary = k.isB
+	if k.get("isD", "") == "":
+		var m := bina_merkez(b); var s: float = BOY.get(b["tip"], 1); var a := randf() * TAU; var r := s / 2 + 0.12
+		var h := Vector3(m.x + cos(a) * r * (0.8 if s > 1 else 1.0), 0, m.z + sin(a) * r * (0.8 if s > 1 else 1.0))
+		var bal: bool = b["tip"] in ["balikci", "iskele"]
+		if bal:
+			var yn: Array = [[0, 1], [1, 0], [0, -1], [-1, 0]][int(b.get("rot", 0)) % 4]; var uz := 1.25 if b["tip"] == "iskele" else 0.55
+			h = Vector3(m.x + yn[0] * uz + randf_range(-0.07, 0.07), 0, m.z + yn[1] * uz + randf_range(-0.07, 0.07)); k["bakis"] = atan2(yn[0], yn[1])
+		else: k.erase("bakis")
+		k["isH"] = h; k["isD"] = "is"; k["bekle"] = randf_range(14, 24) if bal else randf_range(5, 11)
+	if not koylu_yuru(k, k.isH, dt): return
+	k.bekle -= dt
+	if k.isD == "is":
+		k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
+		if k.has("bakis"):
+			k.gr.rotation.y = k.bakis; k.kR.rotation.x = -0.9 + sin(simdi_ms() / 1000.0 * 1.3 + k.faz) * 0.08; k.kL.rotation.x = -0.6
+		else:
+			k["is2"] = float(k.get("is2", 0)) + dt * 6; k.kR.rotation.x = -0.6 - max(0.0, sin(float(k.is2))) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.7
+		if k.bekle <= 0:
+			var evler: Array = kayit_v["b"].filter(func(q): return ev_mi(q["tip"]) and q.get("insa") == null)
+			k["isH"] = kapi_poz(evler[koyluler.find(k) % evler.size()]) if not evler.is_empty() else k.gr.position
+			k["isD"] = "eve"; k["bekle"] = randf_range(2, 5)
+	elif k.bekle <= 0: k["isD"] = ""
+	else:
+		for u in [k.bL, k.bR, k.kL, k.kR]: u.rotation.x = lerp(u.rotation.x, 0.0, dt * 6)
 # web'deki gibi tarlada çapa yapan köylüler: eğilir, çapayı kaldırıp vurur, ara ara yer değiştirir
 var tarlacilar := []
 func tarlaci_koy(bl: Array, n: int):
@@ -674,7 +734,10 @@ func koylu_adim(dt: float):
 		if k.get("insaB") != null:
 			if k.get("od") != null: oduncu_birak(k)
 			insaat_adim(k, dt); continue
+		var isb = k.get("isB")
+		if isb != null and isb["tip"] == "oduncu": oduncu_adim(k, dt, isb); continue
 		if k.get("od") != null: oduncu_adim(k, dt); continue
+		if isb != null and isb["tip"] != "tarla": is_adim(k, dt); continue
 		var gr: Node3D = k.gr
 		var fark: Vector3 = k.hedef - gr.position; fark.y = 0
 		if k.bekle > 0:
@@ -1864,7 +1927,7 @@ func emekli_say(yer: int) -> int:
 	var l := (kayit_v.get("nufus", []) as Array).filter(func(k): return yas(k) >= YETISKIN_YAS and not k.get("asker", false))
 	l.sort_custom(func(a, b): return int(a.get("id", 0)) < int(b.get("id", 0)))
 	return l.slice(0, min(40, yer)).filter(func(k): return yas(k) >= YASLI_YAS).size()
-func hesapla() -> Dictionary:
+func hesapla(cevrimdisi := false) -> Dictionary:
 	durum.clear()
 	var tam: Array = kayit_v["b"].filter(func(b): return b.get("insa") == null)
 	var kuyular := tam.filter(func(b): return b["tip"] == "kuyu")
@@ -1891,9 +1954,9 @@ func hesapla() -> Dictionary:
 		var d := {"calisan": c}; durum[int(b["id"])] = d
 		var bb: Dictionary = BINA_BILGI[b["tip"]]
 		if b["tip"] == "oduncu":
-			# not: web'de oduncular ağacı tek tek keser; o yapılana kadar web'in çevrimdışı hesabı kullanılıyor
+			# oyun açıkken oduncular ağacı tek tek keser (oduncu_adim); kapalıyken web'in çevrimdışı hesabı
 			d["agac"] = agac_say(b)
-			if c > 0 and d["agac"] > 0: hiz["odun"] += (12 + 3 * int(b.get("lv", 1))) / KESIM_SURE * c
+			if cevrimdisi and c > 0 and d["agac"] > 0: hiz["odun"] += (12 + 3 * int(b.get("lv", 1))) / KESIM_SURE * c
 			continue
 		if c > 0 and bb.has("uret"):
 			var kom := komsu_say(b, int(bb.get("komsu", 0))); d["komsu"] = kom
@@ -1902,11 +1965,12 @@ func hesapla() -> Dictionary:
 				d["hiz"] = v; hiz[r] = float(hiz.get(r, 0)) + v
 	sonuc = {"evYer": max(0, ev_yer - kayip), "hiz": hiz, "yer": is_gucu, "isciKul": kul}
 	return sonuc
-func pasif_adim(dt: float):
+func pasif_adim(dt: float, cevrimdisi := false):
 	if kayit_v.is_empty() or BINA_BILGI.is_empty(): return
-	var h: Dictionary = hesapla()["hiz"]
+	var h: Dictionary = hesapla(cevrimdisi)["hiz"]
 	kayit_v["res"]["odun"] = float(kayit_v["res"].get("odun", 0)) + float(h["odun"]) * dt
 	kayit_v["res"]["tas"] = float(kayit_v["res"].get("tas", 0)) + float(h["tas"]) * dt
+	if cevrimdisi: return
 	# web pasifAdim: enerji ve turist geliri hazineye; belediye varsa vergi kasaya, bakım kasadan, kasa taşarsa hazineye
 	var m := muhasebe_carpan(); var diger := (enerji_geliri() + turist_geliri()) * m * dt / 60.0
 	if not bina_var("belediye"):
@@ -2351,11 +2415,10 @@ func balta_yap() -> Node3D:
 	n.visible = false; return n
 func oduncu_ata():
 	# boştaki (inşaatta olmayan, işi olmayan) köylüler işaretli ağaçlara gider — web: k.is olmayanlar
-	var yer: int = max(1, int(sonuc.get("yer", 1))); var bos_oran: float = clamp(float(yer - int(sonuc.get("isciKul", 0))) / yer, 0.0, 1.0)
-	var sinir := int(ceil(koyluler.size() * bos_oran)); var aktif := koyluler.filter(func(k): return k.get("od") != null).size()
+	var sinir := koyluler.size(); var aktif := koyluler.filter(func(k): return k.get("od") != null).size()
 	for k in koyluler:
 		if aktif >= sinir: return
-		if k.get("insaB") != null or k.get("od") != null: continue
+		if k.get("insaB") != null or k.get("od") != null or k.get("isB") != null: continue
 		var i := isaretli_bul(k.gr.position)
 		if i < 0: return
 		agac_rezerve[i] = true; k["od"] = "git"; k["agac"] = i; aktif += 1
@@ -2367,8 +2430,19 @@ func oduncu_birak(k: Dictionary):
 	k.erase("od"); k.erase("agac"); k["ust"].rotation.x = 0
 	if k.has("balta"): k.balta.visible = false
 	if k.has("yuk"): k.yuk.visible = false
-func oduncu_adim(k: Dictionary, dt: float):
+func agac_bul(b: Dictionary, r := 7) -> int:
+	var en := -1; var en_d := 1e9
+	for z in range(int(b["z"]) - r, int(b["z"]) + r + 1):
+		for x in range(int(b["x"]) - r, int(b["x"]) + r + 1):
+			if x < 0 or z < 0 or x >= WN or z >= WN: continue
+			var i := z * WN + x
+			if int(arazi_t[i]) != 2 or karo_bina.has(i) or agac_rezerve.has(i) or not karo_acik(i): continue
+			var d: float = pow(x - int(b["x"]), 2) + pow(z - int(b["z"]), 2) + randf() * 2
+			if d < en_d: en_d = d; en = i
+	return en
+func oduncu_adim(k: Dictionary, dt: float, b = null):
 	var gr: Node3D = k.gr
+	if b != null and k.get("od") == null: k["od"] = "bos"
 	if not k.has("balta"):
 		k["balta"] = balta_yap(); k.kR.add_child(k.balta)
 		var y := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(0.12, 0.05, 0.05); y.mesh = bm; y.position = Vector3(0, 0.29, -0.04); y.visible = false; k.ust.add_child(y); k["yuk"] = y
@@ -2380,9 +2454,25 @@ func oduncu_adim(k: Dictionary, dt: float):
 		k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8
 		return false
 	var od: String = k.od
+	if od == "bos":
+		var kp := kapi_poz(b); var i := isaretli_bul(kp)
+		if i < 0: i = agac_bul(b)
+		if i < 0:
+			k.balta.visible = false
+			if yuru.call(kp, 0.4):
+				for u in [k.bL, k.bR, k.kL, k.kR]: u.rotation.x = lerp(u.rotation.x, 0.0, dt * 6)
+			return
+		agac_rezerve[i] = true; k["agac"] = i; k["od"] = "git"
+		var p := karo_poz(i); var yon: Vector3 = kp - p; yon.y = 0
+		yon = yon.normalized() if yon.length() > 0.01 else Vector3.FORWARD
+		k["odHedef"] = p + yon * 0.4
+		return
 	if od == "git":
 		k.balta.visible = true
-		if not int(arazi_t[int(k.agac)]) in [2, 3]: oduncu_birak(k); return
+		if not int(arazi_t[int(k.agac)]) in [2, 3]:
+			if b != null: agac_rezerve.erase(int(k.agac)); k.erase("agac"); k["od"] = "bos"
+			else: oduncu_birak(k)
+			return
 		if yuru.call(k.odHedef, 0.5):
 			var p := karo_poz(int(k.agac)); gr.rotation.y = atan2(p.x - gr.position.x, p.z - gr.position.z); k["od"] = "kes"; k["kfaz"] = 0.0
 	elif od == "kes":
@@ -2392,7 +2482,10 @@ func oduncu_adim(k: Dictionary, dt: float):
 		k["kfaz"] = float(k.kfaz) + dt * 7; var sal := sin(float(k.kfaz))
 		k.kR.rotation.x = -2.5 * sal if sal > 0 else -0.4 - sal * 0.2; k.kL.rotation.x = k.kR.rotation.x * 0.85
 		k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
-		if not int(arazi_t[i]) in [2, 3]: oduncu_birak(k); return
+		if not int(arazi_t[i]) in [2, 3]:
+			if b != null: agac_rezerve.erase(i); k.erase("agac"); k["od"] = "bos"
+			else: oduncu_birak(k)
+			return
 		if float(ks[key]) >= KESIM_SURE:
 			k["yukTip"] = "tas" if int(arazi_t[i]) == 3 else "odun"
 			if int(arazi_t[i]) == 2:
@@ -2409,13 +2502,24 @@ func oduncu_adim(k: Dictionary, dt: float):
 				var dd: float = (karo_poz(j) - gr.position).length_squared()
 				if dd < d: d = dd; en = j
 			k.karo = en; k["odHedef"] = karo_poz(en)
+			if b != null:
+				k["odHedef"] = kapi_poz(b)
+				if k.yukTip == "odun":
+					for q in kayit_v["b"]:
+						if q["tip"] == "keresteci" and q.get("insa") == null: k["odHedef"] = kapi_poz(q); break
 	elif od == "tasi":
 		if yuru.call(k.odHedef, 0.55):
-			var r: String = k.yukTip; var n := 10 if r == "tas" else 12
+			var r: String = k.yukTip; var n := 10 if r == "tas" else (12 + 3 * int(b.get("lv", 1)) if b != null else 12)
 			kayit_v["res"][r] = float(kayit_v["res"].get(r, 0)) + n
 			bildir("+%d %s" % [n, "taş" if r == "tas" else "odun"]); ust_guncelle(); kayit_yaz_koy()
-			k.hedef = gr.position; oduncu_birak(k)
+			k.hedef = gr.position
+			if b != null: k["od"] = "bos"; k.yuk.visible = false
+			else: oduncu_birak(k)
 var _kutuk_kok: Node3D
+var _fmt: StandardMaterial3D
+func _fidan_mt() -> StandardMaterial3D:
+	if _fmt == null: _fmt = StandardMaterial3D.new(); _fmt.albedo_color = Color.html("#4f7a2e")
+	return _fmt
 func kutuk_ciz():
 	# kesilen ağaçların kütükleri; 90 sn sonra çürür (web S.k)
 	if _kutuk_kok: _kutuk_kok.queue_free()
@@ -2425,18 +2529,80 @@ func kutuk_ciz():
 	var mt := malz_yap("8a7660")
 	for key in kk.keys():
 		var e: Dictionary = kk[key]
-		if e.get("d") != "kutuk": continue
 		var i := int(key)
+		if e.get("d") == "fidan":
+			var sc: float = 0.7 + min(1.0, (simdi_ms() - float(e.get("z", 0))) / 150000.0) * 0.8
+			for q in 2:
+				var fm := MeshInstance3D.new(); var cm := CylinderMesh.new(); cm.top_radius = 0.0; cm.bottom_radius = 0.035 * sc; cm.height = 0.12 * sc; fm.mesh = cm; fm.material_override = _fidan_mt()
+				fm.position = karo_poz(i) + Vector3((rnd(i, 10 + q) - 0.5) * 0.5, 0.06 * sc, (rnd(i, 20 + q) - 0.5) * 0.5); _kutuk_kok.add_child(fm)
+			continue
+		if e.get("d") != "kutuk": continue
 		for q in 2:
 			var mi := MeshInstance3D.new(); mi.mesh = sil_m(0.075 * 0.3, 0.09 * 0.3, 0.12 * 0.3, 9); mi.material_override = mt
 			mi.position = karo_poz(i) + Vector3((rnd(i, 31 + q) - 0.5) * 0.4, 0.018, (rnd(i, 41 + q) - 0.5) * 0.4); _kutuk_kok.add_child(mi)
+# web yokkenGecen: kapalıyken geçen süre (en çok 4 saat) odun/taş olarak eklenir
+var _yokken := -1.0
+var _rapor := 0
+func isci_rapor():
+	if not "--isci" in OS.get_cmdline_user_args(): return
+	_rapor += 1
+	if _rapor % 10 != 0: return
+	var say := {}
+	for k in koyluler:
+		var t: String = (k["isB"]["tip"] if k.get("isB") != null else "-") + ":" + str(k.get("od", k.get("isD", "")))
+		say[t] = int(say.get(t, 0)) + 1
+	print("ISCI n=", koyluler.size(), " ", say, " odun=", int(kayit_v["res"]["odun"]), " tas=", int(kayit_v["res"]["tas"]))
+func yokken_gecen():
+	if _yokken < 30: return
+	var once := [float(kayit_v["res"].get("odun", 0)), float(kayit_v["res"].get("tas", 0))]
+	var t: float = min(4 * 3600.0, _yokken); _yokken = -1.0
+	while t > 0:
+		var a: float = min(10.0, t); pasif_adim(a, true); t -= a
+	hesapla()
+	var fo := int(float(kayit_v["res"]["odun"]) - once[0]); var ft := int(float(kayit_v["res"]["tas"]) - once[1])
+	var l := []
+	if fo > 0: l.append("+%d odun" % fo)
+	if ft > 0: l.append("+%d taş" % ft)
+	if not l.is_empty(): bildir("Sen yokken: " + ", ".join(l))
+func kiyi_yer_bul() -> int:
+	# web kiyiYerBul: kütük çürüyünce fidan köyden uzak, deniz kıyısında biter
+	for d in 120:
+		var j := randi() % (WN * WN)
+		if int(arazi_t[j]) != 1 or karo_bina.has(j) or not karo_acik(j) or koy_yakin(j): continue
+		if kayit_v.get("k") is Dictionary and kayit_v["k"].has(str(j)): continue
+		var x := j % WN; var z := j / WN; var kiyi := false
+		for a in range(-3, 4):
+			for c in range(-3, 4):
+				var xx := x + a; var zz := z + c
+				if xx < 0 or zz < 0 or xx >= WN or zz >= WN or int(arazi_t[zz * WN + xx]) == 0: kiyi = true; break
+			if kiyi: break
+		if not kiyi: continue
+		var yakin := false
+		for b in kayit_v["b"]:
+			if abs(int(b["x"]) - x) <= 6 and abs(int(b["z"]) - z) <= 6: yakin = true; break
+		if not yakin: return j
+	return -1
+func koy_yakin(i: int) -> bool:
+	var x := i % WN; var z := i / WN
+	for b in kayit_v["b"]:
+		if not b["tip"] in ["yol", "asfalt", "lamba"] and abs(int(b["x"]) - x) <= 7 and abs(int(b["z"]) - z) <= 7: return true
+	return false
+var agac_cikti := false
 func kutuk_adim():
 	var kk = kayit_v.get("k")
 	if not kk is Dictionary: return
 	var t := simdi_ms(); var degisti := false
 	for key in kk.keys():
-		if kk[key].get("d") == "kutuk" and t - float(kk[key].get("z", 0)) > 90000: kk.erase(key); degisti = true
-	if degisti: kutuk_ciz()
+		var e: Dictionary = kk[key]; var i := int(key)
+		if karo_bina.has(i): kk.erase(key); degisti = true; continue
+		if e.get("d") == "kutuk" and t - float(e.get("z", 0)) > 90000:
+			kk.erase(key); degisti = true
+			var j := kiyi_yer_bul()
+			if j >= 0: kk[str(j)] = {"d": "fidan", "z": t}
+		elif e.get("d") == "fidan" and t - float(e.get("z", 0)) > 150000:
+			kk.erase(key); degisti = true; arazi_t[i] = 2; agac_cikti = true
+	if agac_cikti: orman_yenile(); agac_cikti = false
+	if degisti: kutuk_ciz(); kayit_yaz_koy()
 
 func kamera_guncelle():
 	# web oyunundaki kamera: yakında alçak, uzakta dik bakış
@@ -2517,7 +2683,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -2606,6 +2772,7 @@ func _process(dt):
 	if ekran_yolu != "" and kare >= 20 and Time.get_ticks_msec() / 1000.0 >= bekle_sn and not _cekildi:
 		_cekildi = true
 		print("ODUNCU ", koyluler.filter(func(k): return k.get("od") != null).map(func(k): return k.od), " kesimSure ", kayit_v.get("kesimSure"), " odun ", kayit_v["res"]["odun"])
+		_rapor = 9; isci_rapor()
 		print("INSAATCI ", koyluler.filter(func(k): return k.get("insaB") != null).size(), " calisan ", insa_isci, " koylu ", koyluler.size())
 		for b in kayit_v["b"]:
 			if b.get("insa") != null: print("INSA ", b["tip"], " ", b["insa"])
