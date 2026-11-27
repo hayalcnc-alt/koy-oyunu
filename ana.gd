@@ -208,7 +208,7 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 28)
-	call_deferred("hazirla_hepsi"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
+	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
 	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
 	web_orman(t)
@@ -670,7 +670,10 @@ func insaat_adim(k: Dictionary, dt: float) -> void:
 func koylu_adim(dt: float):
 	insa_isci.clear()
 	for k in koyluler:
-		if k.get("insaB") != null: insaat_adim(k, dt); continue
+		if k.get("insaB") != null:
+			if k.get("od") != null: oduncu_birak(k)
+			insaat_adim(k, dt); continue
+		if k.get("od") != null: oduncu_adim(k, dt); continue
 		var gr: Node3D = k.gr
 		var fark: Vector3 = k.hedef - gr.position; fark.y = 0
 		if k.bekle > 0:
@@ -1917,8 +1920,139 @@ func dokunma_sec(ekran: Vector2):
 	var b = karo_bina.get(z * WN + x)
 	if b == null: b = ek_bul(x, z, "lamba")
 	if b == null: b = ek_bul(x, z, "cit")
-	if b != null: bina_goster(b)
-	else: bilgi_panel.visible = false
+	if b != null: bina_goster(b); return
+	bilgi_panel.visible = false
+	if x < 0 or z < 0 or x >= WN or z >= WN: return
+	var i := z * WN + x; var tt := int(arazi_t[i])
+	if tt == 2 or tt == 3: kesim_isaretle(i)
+	elif tt == 5: bildir("Dağlık arazi. Buraya bina yapılamaz.")
+	elif tt == 4: bildir("Dere. Kenarına balıkçı kulübesi kurabilirsin.")
+
+# --- ağaç kesme / kaya kırma: web kesimIsaretle + oduncuAdim (KESIM_SURE 30 sn, ağaç devrilir, kütük kalır, yük taşınır)
+var agac_rezerve := {}
+func kesim_isaretle(i: int):
+	if not kayit_v.get("kesim") is Dictionary: kayit_v["kesim"] = {}
+	var ks: Dictionary = kayit_v["kesim"]; var k := str(i)
+	var kaya := int(arazi_t[i]) == 3
+	if ks.has(k):
+		ks.erase(k); bildir("Kaya kırma iptal edildi." if kaya else "Kesim iptal edildi."); kayit_yaz_koy(); isaret_ciz(); return
+	ks[k] = 1
+	bildir("Kaya işaretlendi. Boştaki köylüler gelip kıracak (30 sn)." if kaya else ("Ağaç işaretlendi. Boştaki köylüler gelip kesecek (30 sn)." if koyluler.size() > 0 else "Ağaç işaretlendi. Kesmek için köylü lazım: ev yap."))
+	kayit_yaz_koy(); isaret_ciz()
+func karo_poz(i: int) -> Vector3: return Vector3(i % WN + 0.5 - YARI, 0, i / WN + 0.5 - YARI)
+func isaretli_bul(p0: Vector3) -> int:
+	var en := -1; var en_d := 1e9
+	var ks: Dictionary = kayit_v.get("kesim", {}) if kayit_v.get("kesim") is Dictionary else {}
+	for k in ks.keys():
+		var i := int(k)
+		if not int(arazi_t[i]) in [2, 3] or karo_bina.has(i): ks.erase(k); continue
+		if agac_rezerve.has(i): continue
+		var d := (karo_pos2(i) - Vector2(p0.x, p0.z)).length_squared()
+		if d < en_d: en_d = d; en = i
+	return en
+func karo_pos2(i: int) -> Vector2: return Vector2(i % WN + 0.5 - YARI, i / WN + 0.5 - YARI)
+var _isaret_kok: Node3D
+func isaret_ciz():
+	# işaretli ağaç/kayanın üstünde küçük sarı kurdele
+	if _isaret_kok: _isaret_kok.queue_free()
+	_isaret_kok = Node3D.new(); add_child(_isaret_kok)
+	var mt := StandardMaterial3D.new(); mt.albedo_color = Color.html("#f2c14e"); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for k in (kayit_v.get("kesim", {}) as Dictionary).keys():
+		var mi := MeshInstance3D.new(); var m := SphereMesh.new(); m.radius = 0.06; m.height = 0.12; mi.mesh = m; mi.material_override = mt
+		mi.position = karo_poz(int(k)) + Vector3(0, 0.95 if int(arazi_t[int(k)]) == 2 else 0.4, 0); _isaret_kok.add_child(mi)
+var _balta_mt: Array = []
+func balta_yap() -> Node3D:
+	if _balta_mt.is_empty():
+		var a := StandardMaterial3D.new(); a.albedo_color = Color.html("#7a5532"); var b := StandardMaterial3D.new(); b.albedo_color = Color.html("#8f9aa3"); b.metallic = 0.3; _balta_mt = [a, b]
+	var n := Node3D.new(); n.position = Vector3(0, -0.11, 0.02); n.rotation.x = 1.2
+	var s1 := MeshInstance3D.new(); var m1 := BoxMesh.new(); m1.size = Vector3(0.012, 0.012, 0.15); s1.mesh = m1; s1.material_override = _balta_mt[0]; s1.position.z = 0.05; n.add_child(s1)
+	var s2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.008, 0.04, 0.035); s2.mesh = m2; s2.material_override = _balta_mt[1]; s2.position = Vector3(0, 0.02, 0.12); n.add_child(s2)
+	n.visible = false; return n
+func oduncu_ata():
+	# boştaki (inşaatta olmayan) köylüler işaretli ağaçlara gider
+	for k in koyluler:
+		if k.get("insaB") != null or k.get("od") != null: continue
+		var i := isaretli_bul(k.gr.position)
+		if i < 0: return
+		agac_rezerve[i] = true; k["od"] = "git"; k["agac"] = i
+		var p := karo_poz(i); var yon: Vector3 = k.gr.position - p; yon.y = 0
+		yon = yon.normalized() if yon.length() > 0.01 else Vector3.FORWARD
+		k["odHedef"] = p + yon * 0.4
+func oduncu_birak(k: Dictionary):
+	if k.get("agac") != null: agac_rezerve.erase(int(k["agac"]))
+	k.erase("od"); k.erase("agac"); k["ust"].rotation.x = 0
+	if k.has("balta"): k.balta.visible = false
+	if k.has("yuk"): k.yuk.visible = false
+func oduncu_adim(k: Dictionary, dt: float):
+	var gr: Node3D = k.gr
+	if not k.has("balta"):
+		k["balta"] = balta_yap(); k.kR.add_child(k.balta)
+		var y := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(0.12, 0.05, 0.05); y.mesh = bm; y.position = Vector3(0, 0.29, -0.04); y.visible = false; k.ust.add_child(y); k["yuk"] = y
+	var yuru := func(h: Vector3, hiz: float) -> bool:
+		var f: Vector3 = h - gr.position; f.y = 0
+		if f.length() < 0.04: return true
+		gr.position += f.normalized() * min(f.length(), hiz * dt); gr.rotation.y = lerp_angle(gr.rotation.y, atan2(f.x, f.z), dt * 8)
+		k.faz += dt * 9.0; var sl := sin(k.faz) * 0.5
+		k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8
+		return false
+	var od: String = k.od
+	if od == "git":
+		k.balta.visible = true
+		if not int(arazi_t[int(k.agac)]) in [2, 3]: oduncu_birak(k); return
+		if yuru.call(k.odHedef, 0.5):
+			var p := karo_poz(int(k.agac)); gr.rotation.y = atan2(p.x - gr.position.x, p.z - gr.position.z); k["od"] = "kes"; k["kfaz"] = 0.0
+	elif od == "kes":
+		var i := int(k.agac); var key := str(i)
+		if not kayit_v.get("kesimSure") is Dictionary: kayit_v["kesimSure"] = {}
+		var ks: Dictionary = kayit_v["kesimSure"]; ks[key] = float(ks.get(key, 0)) + dt
+		k["kfaz"] = float(k.kfaz) + dt * 7; var sal := sin(float(k.kfaz))
+		k.kR.rotation.x = -2.5 * sal if sal > 0 else -0.4 - sal * 0.2; k.kL.rotation.x = k.kR.rotation.x * 0.85
+		k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
+		if not int(arazi_t[i]) in [2, 3]: oduncu_birak(k); return
+		if float(ks[key]) >= KESIM_SURE:
+			k["yukTip"] = "tas" if int(arazi_t[i]) == 3 else "odun"
+			if int(arazi_t[i]) == 2:
+				if not kayit_v.get("k") is Dictionary: kayit_v["k"] = {}
+				kayit_v["k"][key] = {"d": "kutuk", "z": simdi_ms()}
+			arazi_t[i] = 1; ks.erase(key)
+			if kayit_v.get("kesim") is Dictionary: kayit_v["kesim"].erase(key)
+			agac_rezerve.erase(i); k.erase("agac"); k["od"] = "tasi"; k.balta.visible = false; k.yuk.visible = true
+			k.yuk.material_override = _balta_mt[0] if k.yukTip == "odun" else malz_yap("a7a298")
+			orman_yenile(); kutuk_ciz(); isaret_ciz(); kayit_yaz_koy()
+			# en yakın yola taşır
+			var en := int(k.karo); var d := 1e9
+			for j in _yol_komsu:
+				var dd: float = (karo_poz(j) - gr.position).length_squared()
+				if dd < d: d = dd; en = j
+			k.karo = en; k["odHedef"] = karo_poz(en)
+	elif od == "tasi":
+		if yuru.call(k.odHedef, 0.55):
+			var r: String = k.yukTip; var n := 10 if r == "tas" else 12
+			kayit_v["res"][r] = float(kayit_v["res"].get(r, 0)) + n
+			bildir("+%d %s" % [n, "taş" if r == "tas" else "odun"]); ust_guncelle(); kayit_yaz_koy()
+			k.hedef = gr.position; oduncu_birak(k)
+var _kutuk_kok: Node3D
+func kutuk_ciz():
+	# kesilen ağaçların kütükleri; 90 sn sonra çürür (web S.k)
+	if _kutuk_kok: _kutuk_kok.queue_free()
+	_kutuk_kok = Node3D.new(); add_child(_kutuk_kok)
+	var kk = kayit_v.get("k")
+	if not kk is Dictionary: return
+	var mt := malz_yap("8a7660")
+	for key in kk.keys():
+		var e: Dictionary = kk[key]
+		if e.get("d") != "kutuk": continue
+		var i := int(key)
+		for q in 2:
+			var mi := MeshInstance3D.new(); mi.mesh = sil_m(0.075 * 0.3, 0.09 * 0.3, 0.12 * 0.3, 9); mi.material_override = mt
+			mi.position = karo_poz(i) + Vector3((rnd(i, 31 + q) - 0.5) * 0.4, 0.018, (rnd(i, 41 + q) - 0.5) * 0.4); _kutuk_kok.add_child(mi)
+func kutuk_adim():
+	var kk = kayit_v.get("k")
+	if not kk is Dictionary: return
+	var t := simdi_ms(); var degisti := false
+	for key in kk.keys():
+		if kk[key].get("d") == "kutuk" and t - float(kk[key].get("z", 0)) > 90000: kk.erase(key); degisti = true
+	if degisti: kutuk_ciz()
 
 func kamera_guncelle():
 	# web oyunundaki kamera: yakında alçak, uzakta dik bakış
@@ -1999,7 +2133,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insaatci_ata(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			insaatci_ata(); oduncu_ata(); kutuk_adim(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -2030,6 +2164,8 @@ func _process(dt):
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
 	if kare == 12:
 		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--kes="):
+				var p := a.substr(6).split(","); kesim_isaretle((int(p[1]) + 63) * WN + int(p[0]) + 63)
 			if a.begins_with("--tasi=") or a.begins_with("--yik="):
 				var id := int(a.split("=")[1])
 				for b in kayit_v["b"].duplicate():
@@ -2074,6 +2210,7 @@ func _process(dt):
 		if a.begins_with("--bekle="): bekle_sn = float(a.substr(8))
 	if ekran_yolu != "" and kare >= 20 and Time.get_ticks_msec() / 1000.0 >= bekle_sn and not _cekildi:
 		_cekildi = true
+		print("ODUNCU ", koyluler.filter(func(k): return k.get("od") != null).map(func(k): return k.od), " kesimSure ", kayit_v.get("kesimSure"), " odun ", kayit_v["res"]["odun"])
 		print("INSAATCI ", koyluler.filter(func(k): return k.get("insaB") != null).size(), " calisan ", insa_isci, " koylu ", koyluler.size())
 		for b in kayit_v["b"]:
 			if b.get("insa") != null: print("INSA ", b["tip"], " ", b["insa"])

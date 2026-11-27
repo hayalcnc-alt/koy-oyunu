@@ -21,6 +21,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Çit (tarla/ağaç/kovan üstüne, komşu çitler birleşir, "Çiti kaldır" +1 odun), sokak lambası (yol kenarı/boş yer, döndür, gece ışığı); yol_yenile teras/lambaları da yeniden kuruyor
 - [x] Orman/kayalığa kurma (ağaç/kaya temizlenir, +3 odun/+2 taş, karo çayır olur), dere/deniz kıyısı ve dağ eteği şartları, suya/dağa dönük otomatik yön
 - [x] İnşaatçılar: en yakın köylüler şantiyeye gider, kazma/kürekle çalışır; çalışan sayısı inşaat hızını belirler (web insaatciAta/insaatAdim/insaAdim)
+- [x] Ağaca/kayaya dokunup işaretleme; boştaki köylü baltayla 30 sn keser/kırar, ağaç kütüğe döner (90 sn sonra çürür), odunu/taşı yola taşır (+12 odun / +10 taş) — web kesimIsaretle/oduncuAdim
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -30,7 +31,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
     Geçişten önce web'e "yeni sürüme geçerken köy kodunu not al" uyarısı. Google'a bağlı hesaplar için Google ile giriş ayrıca.
   - Canlı Firebase'de deneme hesabı açmak kullanıcı onayı bekliyor.
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
-- [ ] Köylü işleri: oduncunun ağaç kesmesi (KESIM), taşçı, ağaca/kayaya dokunup odun/taş toplama, işyerine gidip gelme
+- [ ] Köylü işleri: köylülerin iş binalarına atanıp gidip gelmesi (k.is), oduncu binası işçilerinin çevredeki ağaçları kesmesi (agacBul), fidan/kıyıda yeni ağaç (kiyiYerBul)
 - [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
 - [ ] Bahçe evin yanına kurulur kuralı (web bahceEvi/bahceBagla, ev avlusu çiti)
 - [ ] Toplu ekim paneli
