@@ -33,6 +33,8 @@ var gunes: DirectionalLight3D
 var ortam_e: Environment
 var saat_arg := -1.0
 var dokun_arg := Vector2(-1, -1)
+var insa_arg := ""
+var onay_arg := false
 const GUN_SN := 2880.0
 const SAAT_SN := 120.0
 const GUNDUZ_PAY := 0.8
@@ -45,6 +47,8 @@ func _ready():
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--ekran="): ekran_yolu = a.substr(8)
 		if a.begins_with("--dokun="): var q = a.substr(8).split(","); dokun_arg = Vector2(float(q[0]), float(q[1]))
+		if a.begins_with("--insa="): insa_arg = a.substr(7)
+		if a.begins_with("--onay"): onay_arg = true
 		if a.begins_with("--saat="): saat_arg = float(a.substr(7))
 		if a.begins_with("--kayit="): kayit_adi = a.substr(8)
 		if a.begins_with("--mesafe="): mesafe_arg = float(a.substr(9))
@@ -79,7 +83,9 @@ func cevre_kur():
 
 func web_kaydi_ciz(ad: String):
 	# web oyununun kaydını aç: arazi karoları + binalar aynı yerlerinde
-	var v = JSON.parse_string(FileAccess.get_file_as_string("res://kayitlar/%s.json" % ad))
+	var yol_ := "res://kayitlar/%s.json" % ad
+	if ad == "ornek" and FileAccess.file_exists("user://koy.json"): yol_ = "user://koy.json"
+	var v = JSON.parse_string(FileAccess.get_file_as_string(yol_))
 	if not v is Dictionary: push_error("kayıt okunamadı"); return
 	kayit_v = v
 	for b in v["b"]:
@@ -87,6 +93,7 @@ func web_kaydi_ciz(ad: String):
 		for dz in bx:
 			for dx in bx: karo_bina[(int(b["z"]) + dz) * WN + int(b["x"]) + dx] = b
 	var t: Array = v["t"]
+	arazi_t = t
 	# kara karoları tek ağda; deniz düz su; dere (4) suyla
 	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for z in WN:
@@ -700,6 +707,7 @@ var bilgi_yazi: Label
 var BINA_BILGI := {}
 var karo_bina := {}   # karo indeksi -> bina sözlüğü (dokunma için)
 var kayit_v := {}
+var arazi_t: Array = []
 
 func noktali(n: int) -> String:
 	var s := str(n); var o := ""
@@ -732,6 +740,16 @@ func arayuz_kur():
 		var sb := kutu_stil(d[1], 55); sb.border_color = Color(0.45, 0.32, 0.18); sb.set_border_width_all(5)
 		bt.add_theme_stylebox_override("normal", sb); bt.add_theme_stylebox_override("hover", sb); bt.add_theme_stylebox_override("pressed", sb)
 		alt.add_child(bt)
+		if d[0] == "İNŞA": bt.pressed.connect(insa_ac)
+	_kok_cl = cl
+	yer_panel = HBoxContainer.new(); yer_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); yer_panel.offset_top = -300; yer_panel.offset_bottom = -180; yer_panel.alignment = BoxContainer.ALIGNMENT_CENTER; yer_panel.add_theme_constant_override("separation", 20); yer_panel.visible = false; cl.add_child(yer_panel)
+	for d in [["İptal", Color(0.85, 0.35, 0.3)], ["Döndür", Color(0.98, 0.93, 0.82)], ["Yerleştir", Color(0.35, 0.7, 0.35)]]:
+		var bt := Button.new(); bt.text = d[0]; bt.custom_minimum_size = Vector2(190, 100); bt.add_theme_font_size_override("font_size", 32)
+		var sb := kutu_stil(d[1], 40); bt.add_theme_stylebox_override("normal", sb); bt.add_theme_stylebox_override("hover", sb); bt.add_theme_stylebox_override("pressed", sb)
+		bt.add_theme_color_override("font_color", Color(0.2, 0.14, 0.08)); yer_panel.add_child(bt)
+		if d[0] == "İptal": bt.pressed.connect(yerlestir_iptal)
+		elif d[0] == "Döndür": bt.pressed.connect(func(): hayalet_rot = (hayalet_rot + 1) % 4; hayalet_tasi(hayalet_karo))
+		else: bt.pressed.connect(yerlestir_onay)
 	# bina bilgi paneli (dokununca alttan açılır)
 	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -470; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
 	bilgi_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.97), 26)); bilgi_panel.visible = false; cl.add_child(bilgi_panel)
@@ -740,6 +758,101 @@ func arayuz_kur():
 	bilgi_baslik = Label.new(); bilgi_baslik.add_theme_font_size_override("font_size", 40); bilgi_baslik.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bilgi_baslik.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bilgi_baslik)
 	var kapat := Button.new(); kapat.text = " X "; kapat.add_theme_font_size_override("font_size", 32); kapat.pressed.connect(func(): bilgi_panel.visible = false); ust.add_child(kapat)
 	bilgi_yazi = Label.new(); bilgi_yazi.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; bilgi_yazi.add_theme_font_size_override("font_size", 28); bilgi_yazi.add_theme_color_override("font_color", Color(0.3, 0.24, 0.18)); vb.add_child(bilgi_yazi)
+
+# --- İNŞA: liste → yerleştirme önizlemesi → onay; kaynak düşülür, köy kaydedilir
+var insa_panel: PanelContainer
+var yer_panel: HBoxContainer
+var secili_tip := ""
+var hayalet: Node3D
+var hayalet_karo := Vector2i.ZERO
+var hayalet_rot := 0
+var _kok_cl: CanvasLayer
+
+func yeter(cost: Dictionary) -> bool:
+	var res: Dictionary = kayit_v.get("res", {})
+	for k in cost:
+		if not k in ["altin", "odun", "tas"]: return false
+		if float(res.get(k, 0)) < float(cost[k]): return false
+	return true
+
+func maliyet_yazi(cost: Dictionary) -> String:
+	var ad := {"altin": "altın", "odun": "odun", "tas": "taş"}; var l := []
+	for k in cost: l.append("%s %s" % [kisalt(float(cost[k])), ad.get(k, k)])
+	return ", ".join(l)
+
+func insa_ac():
+	if insa_panel: insa_panel.queue_free()
+	bilgi_panel.visible = false
+	insa_panel = PanelContainer.new(); insa_panel.set_anchors_preset(Control.PRESET_FULL_RECT); insa_panel.offset_top = 300; insa_panel.offset_bottom = -170; insa_panel.offset_left = 16; insa_panel.offset_right = -16
+	insa_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.98), 26)); _kok_cl.add_child(insa_panel)
+	var vb := VBoxContainer.new(); insa_panel.add_child(vb)
+	var ust := HBoxContainer.new(); vb.add_child(ust)
+	var bl := Label.new(); bl.text = "İnşa"; bl.add_theme_font_size_override("font_size", 42); bl.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bl)
+	var kp := Button.new(); kp.text = " X "; kp.add_theme_font_size_override("font_size", 32); kp.pressed.connect(func(): insa_panel.queue_free(); insa_panel = null); ust.add_child(kp)
+	var sc := ScrollContainer.new(); sc.size_flags_vertical = Control.SIZE_EXPAND_FILL; vb.add_child(sc)
+	var liste := VBoxContainer.new(); liste.size_flags_horizontal = Control.SIZE_EXPAND_FILL; liste.add_theme_constant_override("separation", 8); sc.add_child(liste)
+	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
+	for tip in BINA_BILGI:
+		var bb: Dictionary = BINA_BILGI[tip]
+		if bb.get("gizli", false) or tip in ["yol", "asfalt", "kopru", "cit", "lamba", "teras", "cami"]: continue
+		if not FileAccess.file_exists("res://modeller/%s.glb" % tip): continue
+		if int(bb.get("lv", 1)) > klv: continue
+		var bt := Button.new(); bt.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		bt.text = "%s   ·   %s" % [bb["ad"], maliyet_yazi(bb.get("cost", {}))]
+		bt.add_theme_font_size_override("font_size", 28); bt.disabled = not yeter(bb.get("cost", {}))
+		bt.pressed.connect(func(): yerlestir_basla(tip))
+		liste.add_child(bt)
+
+func yerlestir_basla(tip: String):
+	if insa_panel: insa_panel.queue_free(); insa_panel = null
+	secili_tip = tip; hayalet_rot = 0
+	if hayalet: hayalet.queue_free()
+	hayalet = Node3D.new(); var s := sahne_yukle(tip); s.scale = Vector3.ONE * float(OLCEK.get(tip, 1.0)); hayalet.add_child(s); add_child(hayalet)
+	var zemin := MeshInstance3D.new(); var bx: int = BOY.get(tip, 1); var pm := PlaneMesh.new(); pm.size = Vector2(bx, bx); zemin.mesh = pm; zemin.position.y = 0.03; zemin.name = "zemin"
+	var zm := StandardMaterial3D.new(); zm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; zm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; zemin.material_override = zm; hayalet.add_child(zemin)
+	hayalet_tasi(Vector2i(int(floor(hedef.x + YARI)), int(floor(hedef.z + YARI))))
+	yer_panel.visible = true
+
+func yer_uygun(x: int, z: int, bx: int) -> bool:
+	for dz in bx:
+		for dx in bx:
+			var xx := x + dx; var zz := z + dz
+			if xx < 0 or zz < 0 or xx >= WN or zz >= WN: return false
+			if int(arazi_t[zz * WN + xx]) != 1: return false
+			if karo_bina.has(zz * WN + xx): return false
+	return true
+
+func hayalet_tasi(k: Vector2i):
+	var bx: int = BOY.get(secili_tip, 1)
+	hayalet_karo = k
+	hayalet.position = Vector3(k.x + bx / 2.0 - YARI, 0, k.y + bx / 2.0 - YARI); hayalet.rotation.y = hayalet_rot * PI / 2
+	var ok := yer_uygun(k.x, k.y, bx)
+	(hayalet.get_node("zemin").material_override as StandardMaterial3D).albedo_color = Color(0.3, 0.9, 0.3, 0.45) if ok else Color(0.95, 0.25, 0.2, 0.45)
+
+func yerlestir_onay():
+	var bx: int = BOY.get(secili_tip, 1); var bb: Dictionary = BINA_BILGI[secili_tip]
+	if not yer_uygun(hayalet_karo.x, hayalet_karo.y, bx) or not yeter(bb.get("cost", {})): return
+	var res: Dictionary = kayit_v["res"]
+	for kk in bb.get("cost", {}): res[kk] = float(res[kk]) - float(bb["cost"][kk])
+	var yid := 1
+	for b in kayit_v["b"]: yid = max(yid, int(b["id"]) + 1)
+	var yeni := {"id": yid, "tip": secili_tip, "x": hayalet_karo.x, "z": hayalet_karo.y, "rot": hayalet_rot, "lv": 1, "insa": null}
+	kayit_v["b"].append(yeni)
+	for dz in bx:
+		for dx in bx: karo_bina[(hayalet_karo.y + dz) * WN + hayalet_karo.x + dx] = yeni
+	var m := Vector3(hayalet_karo.x + bx / 2.0 - YARI, 0, hayalet_karo.y + bx / 2.0 - YARI)
+	bina_koy_dunya(secili_tip, m, hayalet_rot, yid)
+	if secili_tip in HAYVAN_TUR: hayvan_koy(secili_tip, m, HAYVAN_TUR[secili_tip][1])
+	yerlestir_iptal(); ust_guncelle(); kayit_yaz_koy()
+
+func yerlestir_iptal():
+	if hayalet: hayalet.queue_free(); hayalet = null
+	secili_tip = ""; yer_panel.visible = false
+
+func kayit_yaz_koy():
+	if kayit_v.is_empty() or kayit_adi != "ornek": return
+	var f := FileAccess.open("user://koy.json", FileAccess.WRITE)
+	if f: f.store_string(JSON.stringify(kayit_v))
 
 func ust_guncelle():
 	if ust_etiket == null: return
@@ -768,6 +881,7 @@ func dokunma_sec(ekran: Vector2):
 	var t := -o.y / d.y; if t < 0: return
 	var p := o + d * t
 	var x := int(floor(p.x + YARI)); var z := int(floor(p.z + YARI))
+	if hayalet: var bx: int = BOY.get(secili_tip, 1); hayalet_tasi(Vector2i(x - (bx - 1) / 2, z - (bx - 1) / 2)); return
 	var b = karo_bina.get(z * WN + x)
 	if b != null: bina_goster(b)
 	else: bilgi_panel.visible = false
@@ -871,7 +985,10 @@ func _process(dt):
 			h.h = Vector3(randf_range(-0.55, 0.55), 0.04, randf_range(-0.1, 0.9)); h.bekle = 1.5 + randf() * 4
 	koylu_adim(dt)
 	kare += 1
+	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 14 and onay_arg:
+		var once: int = kayit_v["b"].size(); yerlestir_onay(); print("INSA SONUC ", once, " -> ", kayit_v["b"].size(), " kayit=", FileAccess.file_exists("user://koy.json"))
 	if ekran_yolu != "" and kare == 20:
 		get_viewport().get_texture().get_image().save_png(ekran_yolu); get_tree().quit()
 
