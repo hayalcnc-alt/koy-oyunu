@@ -1318,14 +1318,25 @@ func ciftlik_eylem(b: Dictionary):
 	if b["tip"] == "tarla":
 		var as_ := ekin_asama(b)
 		if as_ < 0:
-			var sc := ScrollContainer.new(); sc.custom_minimum_size = Vector2(0, 220); eylem_kutu.add_child(sc)
+			# web ekimAc: "Bu tarla" / "Boş tarlaların hepsi", seviyeye göre sıralı ekin listesi
+			var bos: int = kayit_v["b"].filter(func(q): return q["tip"] == "tarla" and q.get("insa") == null and not q.get("ekin") is Dictionary).size()
+			var hepsi: bool = kayit_v.get("ekimHepsi", false) == true and bos > 1
+			if bos > 1:
+				var hbe := HBoxContainer.new(); hbe.add_theme_constant_override("separation", 8); eylem_kutu.add_child(hbe)
+				for d in [["Bu tarla", false], ["Boş tarlaların hepsi (%d)" % bos, true]]:
+					var tb := Button.new(); tb.text = d[0]; tb.toggle_mode = true; tb.button_pressed = (d[1] == hepsi); tb.add_theme_font_size_override("font_size", 24); tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					var h_: bool = d[1]; var bb_ := b
+					tb.pressed.connect(func(): kayit_v["ekimHepsi"] = h_; bina_goster(bb_)); hbe.add_child(tb)
+			var sc := ScrollContainer.new(); sc.custom_minimum_size = Vector2(0, 260); eylem_kutu.add_child(sc)
 			var vb := VBoxContainer.new(); vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL; sc.add_child(vb)
-			for tip in VERI["ekin"]:
-				var e: Dictionary = VERI["ekin"][tip]
-				if int(e["lv"]) > klv: continue
-				var bt := Button.new(); bt.text = "Ek: %s · %d altın · %s" % [urun_ad(tip), int(e["tohum"]), sure_yazi(int(e["sure"]))]; bt.add_theme_font_size_override("font_size", 26)
-				bt.disabled = float(kayit_v["res"].get("altin", 0)) < float(e["tohum"])
-				bt.pressed.connect(func(): ek(b, tip)); vb.add_child(bt)
+			var tipler: Array = VERI["ekin"].keys(); tipler.sort_custom(func(a, c): return int(VERI["ekin"][a]["lv"]) < int(VERI["ekin"][c]["lv"]))
+			for tip in tipler:
+				var e: Dictionary = VERI["ekin"][tip]; var kilit: bool = int(e["lv"]) > klv
+				var bt := Button.new(); bt.add_theme_font_size_override("font_size", 25); bt.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				bt.text = ("%s · Seviye %d" % [urun_ad(tip), int(e["lv"])]) if kilit else ("%s · %s · %d altın" % [urun_ad(tip), sure_yazi(int(e["sure"])), int(e["tohum"])])
+				bt.disabled = kilit
+				var tp: String = tip; var bb2 := b
+				bt.pressed.connect(func(): ekim_yap(bb2, tp, hepsi)); vb.add_child(bt)
 		elif as_ < 2:
 			var kalan: float = (float(b["ekin"]["bit"]) - simdi_ms()) / 1000.0
 			eylem_dugme("%s büyüyor · %s kaldı" % [urun_ad(b["ekin"]["tip"]), sure_yazi(int(kalan))], func(): pass, false)
@@ -1457,36 +1468,45 @@ func sure_yazi(sn: int) -> String:
 	if sn >= 3600: return "%d sa %d dk" % [sn / 3600, (sn % 3600) / 60]
 	if sn >= 60: return "%d dk %d sn" % [sn / 60, sn % 60]
 	return "%d sn" % max(0, sn)
-func ek(b: Dictionary, tip: String):
+func ek(b: Dictionary, tip: String) -> bool:
+	# web ek(): tohum parası, gübre varsa %20 kısa sürer
 	var e: Dictionary = VERI["ekin"][tip]
-	if float(kayit_v["res"].get("altin", 0)) < float(e["tohum"]) or b.get("ekin") is Dictionary: return
+	if b.get("insa") != null or b.get("ekin") is Dictionary: return false
+	if float(kayit_v["res"].get("altin", 0)) < float(e["tohum"]): return false
 	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
-	var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0}
-	ekin_yenile(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+	var gub := 1.0
+	if int(kayit_v.get("env", {}).get("gubre", 0)) >= 1: env_ekle("gubre", -1); gub = 0.8
+	var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0 * gub, "gubre": gub < 1.0}
+	ekin_yenile(b); return true
+func ekim_yap(b: Dictionary, tip: String, hepsi: bool):
+	var hedefler: Array = kayit_v["b"].filter(func(q): return q["tip"] == "tarla" and q.get("insa") == null and not q.get("ekin") is Dictionary) if hepsi else [b]
+	var n := 0
+	for q in hedefler:
+		if not ek(q, tip): break
+		n += 1
+	if n == 0: bildir("Tohum için altın yetmiyor"); return
+	bildir("%d tarlaya %s ekildi" % [n, urun_ad(tip).to_lower()]); ust_guncelle(); kayit_yaz_koy(); bilgi_panel.visible = false
 # web otoTopla: çiftçiler olgun tarlayı biçer, aynı tohumu yeniden eker (tohum parası düşer)
 var _oto_say := 0
 func hazirla_hepsi():
 	for b in kayit_v.get("b", []): if b.get("insa") == null: bina_hazirla(b)
 func oto_topla():
-	var ek := 0
+	var n_top := 0
 	for b in kayit_v.get("b", []):
 		if b["tip"] != "tarla" or b.get("insa") != null or b.get("otoKapali", false) == true: continue
 		if not b.get("ekin") is Dictionary or ekin_asama(b) != 2: continue
-		var tip: String = b["ekin"]["tip"]; env_ekle(tip, 2); b["ekin"] = null; ek += 1
+		var tip: String = b["ekin"]["tip"]; env_ekle(tip, 2); b["ekin"] = null; n_top += 1
 		xp_ekle(float(VERI["urun"].get(tip, {}).get("xp", 0)) * 2)
-		var e: Dictionary = VERI["ekin"].get(tip, {})
-		if not e.is_empty() and float(kayit_v["res"].get("altin", 0)) >= float(e["tohum"]):
-			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
-			var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0}
+		if VERI["ekin"].has(tip) and int(VERI["ekin"][tip].get("lv", 1)) <= klv(): ek(b, tip)
 		ekin_yenile(b)
 	if kayit_v.get("otoTopla") != false:
 		for b in kayit_v["b"]:
 			if b.get("insa") != null or b.get("otoKapali", false) == true or b["tip"] == "tarla": continue
 			var t: String = b["tip"]
-			if VERI["hayvan"].has(t) and b.get("hayvan") is Array: ek += hayvan_topla_s(b)
-			elif VERI["tarif"].has(t) and b.get("kuyruk") is Array: ek += uretim_topla_s(b)
-			elif VERI.get("agac", {}).has(t) and b.get("meyve") != null: ek += agac_topla_s(b)
-			elif VERI.get("topla", {}).has(t): ek += kovan_topla_s(b)
+			if VERI["hayvan"].has(t) and b.get("hayvan") is Array: n_top += hayvan_topla_s(b)
+			elif VERI["tarif"].has(t) and b.get("kuyruk") is Array: n_top += uretim_topla_s(b)
+			elif VERI.get("agac", {}).has(t) and b.get("meyve") != null: n_top += agac_topla_s(b)
+			elif VERI.get("topla", {}).has(t): n_top += kovan_topla_s(b)
 	hesapla(); oto_uretim()
 	if not mesaide():
 		for b in kayit_v["b"]:
@@ -1495,7 +1515,7 @@ func oto_topla():
 			for q in b.get("kuyruk", []):
 				if float(q["bas"]) > simdi_ms(): q["bas"] = float(q["bas"]) + 3000.0
 				if float(q["bit"]) > simdi_ms(): q["bit"] = float(q["bit"]) + 3000.0
-	if ek > 0: ust_guncelle(); kayit_yaz_koy()
+	if n_top > 0: ust_guncelle(); kayit_yaz_koy()
 func hasat(b: Dictionary):
 	if ekin_asama(b) != 2: return
 	env_ekle(b["ekin"]["tip"], 2); b["ekin"] = null
@@ -2162,6 +2182,14 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 11:
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--bosalt="):
+				for b in kayit_v["b"]:
+					if b["tip"] == "tarla": b["ekin"] = null; b["otoKapali"] = true; ekin_yenile(b)
+				if OS.get_cmdline_user_args().has("--ekhepsi"):
+					var a0 := float(kayit_v["res"]["altin"]); ekim_yap(kayit_v["b"][0], "misir", true)
+					print("EKIM ", kayit_v["b"].filter(func(q): return q["tip"] == "tarla" and q.get("ekin") is Dictionary).size(), " altin ", a0, " -> ", kayit_v["res"]["altin"])
 	if kare == 12:
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--kes="):
