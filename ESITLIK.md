@@ -40,7 +40,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Memnuniyette makine işsizliği (tarimDurum), sanayi dumanı (sanayiDenge), çöp, yangın, cenaze yası
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
-- [ ] Olaylar/hikâyeler (kısa ve seyrek), gazete
+- [x] Olaylar/hikâyeler (web OLAYLAR: 18 olay, en sık 15 dakikada bir, iki seçenek, ceza yok, tek seferlikler bir kez) + sabah gazetesi (dünün olayları, 7-12 arası, son 8 satır). Not: web’deki olayın köyde sahnelenmesi (işaret, katılan köylüler, dokunulmazsa kendi seyri) henüz yok; Godot’da doğrudan seçim penceresi açılıyor
 - [ ] Rehberin ilk açılış (çadır→kuyu→tarla→ev) adımları ve dayıbaşı/bayi/benzinlik önerileri; teraslı ev inşası (glb yok)
 - [ ] Sesler, ayarlar (kalite, ses)
 - [ ] Sohbet / çevrimiçi

@@ -2230,6 +2230,197 @@ func seviye_modal(lv: int, odul: int):
 	var bt := Button.new(); bt.text = "Harika!"; bt.add_theme_font_size_override("font_size", 32); bt.custom_minimum_size = Vector2(0, 80)
 	var yb := kutu_stil(Color(0.36, 0.66, 0.26), 22); bt.add_theme_stylebox_override("normal", yb); bt.add_theme_stylebox_override("hover", yb); bt.add_theme_stylebox_override("pressed", yb)
 	bt.pressed.connect(func(): p.queue_free()); v.add_child(bt)
+# --- köy olayları + gazete: web OLAYLAR/olayAdim/gazete/gazeteAdim — en sık 15 dakikada bir, iki seçenekli kısa olay; sonuç hiçbir zaman ceza değil
+var _modal: Control
+func modal_ac(baslik: String, satirlar: Array, butonlar: Array):
+	if _modal: _modal.queue_free()
+	var p := PanelContainer.new(); p.set_anchors_preset(Control.PRESET_CENTER); p.custom_minimum_size = Vector2(640, 0); p.grow_horizontal = Control.GROW_DIRECTION_BOTH; p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var st := kutu_stil(Color(1.0, 0.96, 0.86), 30); st.border_color = Color(0.72, 0.52, 0.28); st.set_border_width_all(5); st.content_margin_left = 30; st.content_margin_right = 30; st.content_margin_top = 24; st.content_margin_bottom = 24
+	p.add_theme_stylebox_override("panel", st); _kok_cl.add_child(p); _modal = p; p.z_index = 50
+	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 14); p.add_child(v)
+	var b := etiket(v, baslik, 44, Color(0.45, 0.28, 0.08)); b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	for s in satirlar: etiket(v, s, 28)
+	for d in butonlar:
+		var bt := Button.new(); bt.text = d[0]; bt.add_theme_font_size_override("font_size", 28); bt.custom_minimum_size = Vector2(0, 76); bt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var yb := kutu_stil(Color(0.36, 0.66, 0.26) if d.size() < 3 else Color(0.55, 0.42, 0.3), 22); bt.add_theme_stylebox_override("normal", yb); bt.add_theme_stylebox_override("hover", yb); bt.add_theme_stylebox_override("pressed", yb)
+		var f: Callable = d[1]
+		bt.pressed.connect(func(): p.queue_free(); _modal = null; f.call()); v.add_child(bt)
+func emoji_sil(s: String) -> String:
+	var o := ""
+	for ch in s:
+		var c := ch.unicode_at(0)
+		if c >= 0x2190 or (c >= 0x2600) or c == 0xFE0F or c == 0x200D: continue
+		o += ch
+	return o.strip_edges().replace("  ", " ")
+func gazete(m: String):
+	if not kayit_v.get("gazete") is Array: kayit_v["gazete"] = []
+	var g: Array = kayit_v["gazete"]; g.append({"gun": gun_no(), "m": m})
+	if g.size() > 60: g.reverse(); g.resize(60); g.reverse()
+const GUN_AD := ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
+func gazete_adim():
+	var bugun := gun_no(); var h := oyun_saati(); var zorla := "--gazete" in OS.get_cmdline_user_args()
+	if kayit_v.get("gazeteOkundu") == null: kayit_v["gazeteOkundu"] = bugun; return
+	if zorla and not _gazete_zorlandi: _gazete_zorlandi = true; kayit_v["gazeteOkundu"] = bugun - 3
+	if int(kayit_v["gazeteOkundu"]) >= bugun or h < 7 or h > 12 or _modal != null or insa_panel != null: return
+	var dun: Array = (kayit_v.get("gazete", []) as Array).filter(func(g): return int(g["gun"]) >= int(kayit_v["gazeteOkundu"]) and int(g["gun"]) < bugun)
+	if zorla and dun.is_empty(): dun = (kayit_v.get("gazete", []) as Array).slice(-8)
+	kayit_v["gazeteOkundu"] = bugun
+	if dun.is_empty(): return
+	if kayit_v.get("ilkGun") == null: kayit_v["ilkGun"] = bugun - 1
+	var yil := int(floor((bugun - int(kayit_v["ilkGun"])) / 8.0)) + 1; var m := mevsim()
+	var sat := ["%s · %d. yıl · %s" % [m["ad"], yil, GUN_AD[bugun % 7]]]
+	for g in dun.slice(-8): sat.append("• " + emoji_sil(str(g["m"])))
+	modal_ac("%s Gazetesi" % str(kayit_v.get("ad", "Köy") if kayit_v.get("ad") != null else "Köy"), sat, [["Okudum", func(): pass]])
+	kayit_yaz_koy()
+var _gazete_zorlandi := false
+# Türkçe ek uyumu: Ayşe'nin, Ahmet'in, Saniye'yi
+const UNLU := "aeıioöuüâîû"
+func son_unlu(ad: String) -> String:
+	var k := ad.to_lower().replace("I", "ı"); var u := "e"
+	for ch in k:
+		if UNLU.contains(ch): u = ch
+	return u
+func ek_i(ad: String, kay: String) -> String:
+	var u := "e" if (ad.ends_with("al") or ad.ends_with("âl")) else son_unlu(ad)
+	var d := "ı" if "aıâ".contains(u) else ("i" if "eiî".contains(u) else ("u" if "ouû".contains(u) else "ü"))
+	return ad + "'" + (kay if UNLU.contains(ad.right(1).to_lower()) else "") + d
+func ilgi(ad: String) -> String: return ek_i(ad, "n") + "n"
+func belirtme(ad: String) -> String: return ek_i(ad, "y")
+func rast_kisi(f = null):
+	var l: Array = (kayit_v.get("nufus", []) as Array).filter(func(k): return yas(k) >= 18 and (f == null or f.call(k)))
+	return l[randi() % l.size()] if not l.is_empty() else null
+func olay_odul(o: Dictionary) -> String:
+	var l := []
+	if o.has("altin"): kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + o["altin"]; l.append("+%d altın" % o["altin"])
+	if o.has("odun"): kayit_v["res"]["odun"] = float(kayit_v["res"]["odun"]) + o["odun"]; l.append("+%d odun" % o["odun"])
+	if o.has("env"):
+		for k in o["env"]: env_ekle(k, int(o["env"][k])); l.append("+%d %s" % [o["env"][k], urun_ad(k)])
+	if o.has("xp"): xp_ekle(float(o["xp"])); l.append("+%d tecrübe" % o["xp"])
+	if o.has("mutlu"): kayit_v["olayMutlu"] = simdi_ms() + float(o["mutlu"]) * 60000.0; l.append("köy memnun")
+	ust_guncelle(); kayit_yaz_koy(); return ", ".join(l)
+const OLAY_SART := {"tavuk": [15, "kumes"], "inek": [15, "ahir"], "kizisteme": [40, ""], "gurbetci": [80, ""], "imece": [30, ""], "kahvetv": [100, "kahvehane"], "yagmur": [15, ""], "akraba": [15, ""], "telefon": [150, "muhtar"], "elektrik": [250, ""], "otobus": [400, ""], "sunnet": [60, ""], "karne": [150, "okul"], "dugunkurban": [50, ""], "maya": [30, "mandira"], "baytar": [40, "ahir"], "yayla": [25, "agil"], "mektup": [100, ""]}
+const OLAY_TEK := ["telefon", "elektrik", "otobus"]
+func olay_kosul(id: String) -> bool:
+	var s: Array = OLAY_SART[id]
+	if nufus_say() < int(s[0]): return false
+	if s[1] != "" and not bina_var(s[1]): return false
+	if id in OLAY_TEK and (kayit_v.get("olayGor", {}) as Dictionary).has(id): return false
+	if id == "akraba": return nufus_say() < 80
+	if id == "otobus": return kasaba_mi() or bina_var("otogar")
+	if id == "yayla": return int(mevsim()["i"]) == 1
+	if id == "mektup": return not kasaba_mi()
+	return true
+func olay_yap(id: String) -> Variant:
+	var kad := func(k): return k["cins"] == "k"
+	var erk := func(k): return k["cins"] == "e"
+	match id:
+		"tavuk":
+			var a = rast_kisi(kad); if a == null: return null
+			var b = rast_kisi(func(k): return k["id"] != a["id"]); if b == null: return null
+			return {"b": "Tavuk kavgası", "m": "%s Hanım'ın tavukları yine %s bahçesine girmiş, maydanozları dibinden yemiş! %s kapıya dikilmiş, söyleniyor." % [a["ad"], ilgi(b["ad"]), b["ad"]],
+				"s": [["Arayı bul, çay demlet", "İki komşu bir demlik çayla barıştı. Tavuklar da affedildi.", {"mutlu": 20, "xp": 3}], ["Araya çit çektir", "Çit çekildi; tavuklar şimdi çitin üstünden bakıp gıdaklıyor.", {"xp": 5, "env": {"yumurta": 2}}]]}
+		"inek":
+			return {"b": "Sarıkız kaçtı!", "m": "Ahırın kapısı açık kalmış, Sarıkız dağa doğru gidiyor! Biri peşine düşmezse geri gelmeyebilir.",
+				"s": [["Çocuklarla birlikte yakalayın", "Yarım saatlik kovalamacadan sonra Sarıkız yakalandı. Çocuklar bunu yıllarca anlatacak!", {"mutlu": 25, "xp": 4}], ["Bir kova yemle çağır", "Sarıkız yemi görünce kendi kendine ahıra döndü. Akıllı hayvan!", {"env": {"sut": 2}, "xp": 3}]]}
+		"kizisteme":
+			var d = rast_kisi(func(k): return k["cins"] == "e" and k.get("es") == null and yas(k) < 35)
+			var g = rast_kisi(func(k): return k["cins"] == "k" and k.get("es") == null and yas(k) < 33)
+			if d == null or g == null: return null
+			return {"b": "Kız isteme", "m": "%s ailesiyle %s istemeye gitti. Gelin adayı kahveleri getirdi… %s kahvesinden tuz kokusu geliyor." % [d["ad"], belirtme(g["ad"]), ilgi(d["ad"])],
+				"s": [["Hiç bozmadan iç", "%s tuzlu kahveyi tek dikişte içti, gözünü bile kırpmadı. \"Bu çocuk sabırlıymış\" dendi, kız verildi!" % d["ad"], {"mutlu": 30, "xp": 6}], ["Gülüp \"bir şeker alayım\" de", "Herkes kahkahaya boğuldu, buzlar eridi. %s babası \"Esprili damat iyidir\" dedi." % ilgi(g["ad"]), {"mutlu": 30, "altin": 15}]]}
+		"gurbetci":
+			var a = rast_kisi()
+			return {"b": "Almancı geldi!", "m": "%s Almanya'daki amcası yaz tatiline geldi: Mercedes'in bagajı hediye dolu, köy meydanında kalabalık var." % (ilgi(a["ad"]) if a != null else "Köyün"),
+				"s": [["Hediyeleri köyde dağıtsın", "Çocuklara çikolata, kadınlara kahve makinesi, kahveye televizyon! \"Bizim orada böyle değil\" sohbeti üç gün sürdü.", {"mutlu": 30, "xp": 5}], ["Camiye bağış yapsın", "Amca camiye halı aldırdı, köye de bir miktar para bıraktı.", {"altin": 40, "xp": 4}]]}
+		"imece":
+			var a = rast_kisi(erk)
+			return {"b": "İmece", "m": "%s evinin çatısı akıyor, iskele kuruldu. Köylüler \"Ne duruyoruz, imeceye!\" dedi." % (ilgi(a["ad"]) if a != null else "Bir köylünün"),
+				"s": [["Bütün köy toplansın", "Sabah başlandı, öğlene çatı bitti, akşama da kazanlar kuruldu. Ortaya pilav, ayran, helva!", {"mutlu": 30, "xp": 6}], ["Ambardan kereste ver", "Ustalar keresteyle işi çabuk bitirdi, ev sahibi teşekkür için ambara ürün getirdi.", {"env": {"bugday": 4}, "xp": 4}]]}
+		"kahvetv":
+			return {"b": "Kahvede maç", "m": "Kahvehanede akşam maç var ama televizyon karlı gösteriyor. Antenin başına kim çıkacak?",
+				"s": [["Gençleri çatıya gönder", "\"Tamam! Biraz sola… Tamam tamam!\" Son dakikada görüntü geldi, gol de o an oldu!", {"mutlu": 25, "xp": 3}], ["Radyodan dinleyin", "Herkes radyonun başında toplandı, spiker anlattıkça kahve inledi. Eski günler gibi.", {"mutlu": 20, "altin": 8}]]}
+		"yagmur":
+			return {"b": "Yağmur duası", "m": "Uzun zamandır yağmur yok, tarlalar susadı. Yaşlılar \"yağmur duasına çıkalım\" diyor.",
+				"s": [["Bütün köy tepeye çıksın", "Dua edildi, kazanlarda yemek pişti. Akşamüstü bulutlar toplandı, ertesi gün bereketli bir yağmur yağdı!", {"env": {"bugday": 4}, "mutlu": 20, "xp": 4}], ["Kuyulardan su taşıyın", "Köylüler kova kova su taşıdı. Yorgun ama mutlu bir gün oldu.", {"xp": 5, "altin": 6}]]}
+		"akraba":
+			var a = rast_kisi()
+			return {"b": "Göçebe akrabalar", "m": "Yayladan inen bir kervan köyün kenarında durdu: %s uzak akrabaları! Develer çöktü, çadırlar kuruluyor." % (ilgi(a["ad"]) if a != null else "ailenin"),
+				"s": [["Kazan kurup ağırla", "Bütün gece ateş başında eski hikâyeler anlatıldı. Akrabalar \"boş ev olursa biz de kalırız\" dedi.", {"mutlu": 30, "xp": 5}], ["Yayla peyniri al", "Akrabalar tulum peyniri ve yün bıraktı, karşılığında bir çuval un aldılar.", {"env": {"yun": 3}, "altin": 10}]]}
+		"telefon":
+			return {"b": "Köyün ilk telefonu", "m": "Muhtarlığa köyün ilk telefonu bağlandı! Daha ilk gün çaldı: \"Alo, Almanya'dan arıyoruz!\" Bütün köy muhtarlığın önüne toplandı.",
+				"s": [["Herkes sırayla konuşsun", "Herkes gurbetteki akrabasıyla üç dakika konuştu, nineler telefona bağırarak \"duyuyor musun oğlum?\" dedi.", {"mutlu": 40, "xp": 10}], ["Muhtar deftere yazsın", "Muhtar \"telefon defteri\" tuttu; arayanın adı, saati, konuşulan dakika… Düzen sağlandı!", {"altin": 30, "xp": 8}]]}
+		"elektrik":
+			return {"b": "Köye elektrik geldi!", "m": "Direkler dikildi, teller çekildi. Bu akşam köyde ilk kez ampuller yanacak! Herkes meydanda bekliyor.",
+				"s": [["Şalteri muhtar indirsin", "Muhtar \"Bismillah\" deyip şalteri indirdi, köy bir anda aydınlandı! Çocuklar çığlık attı, yaşlılar gözyaşlarını sildi.", {"mutlu": 50, "xp": 15}], ["Son gaz lambası gecesi", "Elektrik yarına bırakıldı; son bir gece gaz lambası ışığında türküler söylendi. Ertesi akşam ampuller yandı.", {"mutlu": 40, "xp": 12}]]}
+		"otobus":
+			return {"b": "İlk otobüs seferi", "m": "Şehre ilk otobüs seferi başladı! Muavin \"Şehre gidenler, son iki koltuk!\" diye bağırıyor. Tavuk sepetini kucağına alan teyze ön koltuğa kuruldu.",
+				"s": [["Gençler şehri görsün", "Gençler şehirden döndü: \"Orada binalar göğe değiyor!\" Akşam kahvede şehir hikâyeleri dinlendi.", {"mutlu": 35, "xp": 10}], ["Ürünleri şehre götürün", "Otobüsün bagajı sepet, çuval doldu. Şehir pazarında iyi fiyata satıldı!", {"altin": 60, "xp": 8}]]}
+		"sunnet":
+			var c: Array = (kayit_v.get("nufus", []) as Array).filter(func(k): return k["cins"] == "e" and yas(k) >= 5 and yas(k) <= 10)
+			if c.is_empty(): return null
+			var a: Dictionary = c[randi() % c.size()]
+			return {"b": "Sünnet düğünü", "m": "Küçük %s sünnet olacak! Pelerini, şapkası, asası hazır; ata binip köyü dolaşmak istiyor." % a["ad"],
+				"s": [["Atla köy turu", "%s beyaz atın üstünde köyü dolaştı, herkes cebine para sıkıştırdı. \"Maşallah, aslan gibi!\"" % a["ad"], {"mutlu": 30, "xp": 5}], ["Meydanda şenlik", "Meydanda kukla oynatıldı, pişmaniye dağıtıldı; çocuklar akşama kadar eğlendi.", {"mutlu": 35, "altin": 10}]]}
+		"karne":
+			var c: Array = (kayit_v.get("nufus", []) as Array).filter(func(k): return yas(k) >= 7 and yas(k) < 15)
+			var a = c[randi() % c.size()] if not c.is_empty() else null
+			return {"b": "Karne günü", "m": "Okulda karneler dağıtıldı. %s Kahvede babalar karne konuşuyor." % ((a["ad"] + " takdir aldı!") if a != null else "Çocuklar karnelerini kapıp evlerine koştu."),
+				"s": [["Çocuklara dondurma", "Bakkalın bütün dondurmaları bitti! Çocuklar yaz tatiline mutlu girdi.", {"mutlu": 30, "xp": 4}], ["Öğretmene teşekkür", "Köylüler öğretmene ev yapımı reçel ve peynir götürdü; öğretmen çok duygulandı.", {"mutlu": 20, "xp": 6}]]}
+		"dugunkurban":
+			return {"b": "Kazan kaynıyor", "m": "Hasat iyi geçti, kadınlar \"meydanda keşkek kazanı kuralım\" diyor.",
+				"s": [["Kazanlar kurulsun", "Bütün gece keşkek dövüldü, davul zurna eşliğinde köy doydu.", {"mutlu": 30, "xp": 5}], ["Fırında ekmek dağıtılsın", "Fırından sıcak ekmek kokusu yayıldı, her eve iki somun gitti.", {"env": {"ekmek": 2}, "mutlu": 15}]]}
+		"maya":
+			var a = rast_kisi(kad); if a == null: return null
+			var g = rast_kisi(func(k): return k["cins"] == "k" and k["id"] != a["id"]); if g == null: return null
+			return {"b": "Maya istemeye geldi", "m": "Köye yeni gelin gelen %s, %s meşhur yoğurdundan bir kaşık maya istiyor." % [g["ad"], ilgi(a["ad"])],
+				"s": [["Mayayı ver, tarifi de anlat", "%s hem maya verdi hem sütün ne kadar ılık olacağını gösterdi. Ertesi sabah %s yoğurdu kaşık dikecek kadar tuttu!" % [a["ad"], ilgi(g["ad"])], {"env": {"yogurt": 2}, "mutlu": 20, "xp": 4}], ["Mandırada birlikte mayalasınlar", "İki kadın mandırada bir kazan süt mayaladı; gelin köye ısındı, mandıranın da yeni bir eli oldu.", {"env": {"yogurt": 3}, "xp": 6}]]}
+		"baytar":
+			var a = rast_kisi(erk)
+			return {"b": "Baytar köyde", "m": "İlçeden baytar (veteriner) geldi, hayvanlara aşı yapacak.%s" % ((" " + a["ad"] + " Ağa \"bizimkiler sapasağlam\" diye homurdanıyor.") if a != null else ""),
+				"s": [["Bütün hayvanlar aşılansın", "Baytar akşama kadar ahır ahır dolaştı. Hayvanlar aşılandı, sütü de bereketlendi.", {"env": {"sut": 3}, "xp": 6}], ["Gençlere hayvan bakımını anlatsın", "Baytar kahvede gençlere yem, su ve ahır temizliğini anlattı. İçlerinden biri \"ben de baytar olacağım\" dedi!", {"mutlu": 20, "xp": 8}]]}
+		"yayla":
+			return {"b": "Yayla vakti", "m": "Ovada ot sarardı. Çobanlar \"koyunları yaylaya çıkaralım\" diyor.",
+				"s": [["Sürüyle yaylaya çıkın", "Sürü yaylada bir hafta otladı; çobanlar dönüşte tulum tulum yün ve yayla tereyağı getirdi.", {"env": {"yun": 3, "tereyag": 1}, "xp": 5}], ["Yaylada şenlik", "Yaylada kazanlar kuruldu, kemençe çalındı, horon tepildi. Köy serinleyip döndü.", {"mutlu": 35, "xp": 4}]]}
+		"mektup":
+			var a = rast_kisi(func(k): return yas(k) >= 40); if a == null: return null
+			return {"b": "Şehirden mektup", "m": "%s, şehirde çalışan oğlundan mektup aldı: \"Köy kasaba olursa dönüp orada iş kuracağım.\"" % a["ad"],
+				"s": [["\"Dön oğul, köyde iş çok\" yazsın", "%s mektuba köyün yeni dükkânlarını, mandırayı, fırını anlattı. Kahvede herkes \"kasaba olmaya az kaldı\" diye konuştu." % a["ad"], {"mutlu": 30, "xp": 8}], ["Koli yollasın: peynir, tarhana, yün çorap", "Koli ertesi gün şehre yola çıktı. Oğlundan cevap geldi: \"Koliyi açınca bütün koğuş köy kokusuna toplandı!\"", {"mutlu": 20, "altin": 15, "xp": 5}]]}
+	return null
+var _olay_sayac := 0
+func olay_adim():
+	var zorla := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--olay="): zorla = a.substr(7)
+	_olay_sayac += 1
+	if _olay_sayac < (3 if zorla != "" else 30): return
+	_olay_sayac = 0
+	if _modal != null or insa_panel != null or hayalet != null or koyluler.size() < 2: return
+	var t := simdi_ms()
+	if zorla == "":
+		if t < float(kayit_v.get("olaySon", 0) if kayit_v.get("olaySon") != null else 0) + 15 * 60000.0 or randf() > 0.35: return
+	elif _olay_zorlandi: return
+	_olay_zorlandi = true
+	if not kayit_v.get("olayGor") is Dictionary: kayit_v["olayGor"] = {}
+	var gor: Dictionary = kayit_v["olayGor"]
+	var aday: Array = OLAY_SART.keys().filter(func(id): return olay_kosul(id))
+	aday.shuffle(); aday.sort_custom(func(a, b): return float(gor.get(a, 0)) < float(gor.get(b, 0)))
+	if zorla != "": aday = [zorla]
+	for id in aday.slice(0, 4):
+		var v: Variant = olay_yap(id)
+		if v == null: continue
+		kayit_v["olaySon"] = t; gor[id] = t
+		var bt := []
+		for s in v["s"]:
+			var sec: Array = s
+			var sf := func():
+				var od := olay_odul(sec[2]); gazete("%s: %s" % [v["b"], sec[1]])
+				modal_ac(v["b"], [sec[1], od], [["Tamam", func(): pass]])
+			bt.append([sec[0], sf])
+		modal_ac(v["b"], [v["m"]], bt); kayit_yaz_koy()
+		if "--olaysec" in OS.get_cmdline_user_args():
+			_modal.queue_free(); _modal = null; bt[0][1].call(); print("OLAY ", kayit_v["gazete"][-1], " mutlu ", kayit_v.get("olayMutlu"))
+		return
+var _olay_zorlandi := false
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
@@ -2683,7 +2874,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
