@@ -201,7 +201,7 @@ func web_kaydi_ciz(ad: String):
 		bina_gorunum(b)
 		if b.get("insa") != null and int(b["insa"].get("hedef", 1)) == 1: continue
 		if tip == "tarla": ekin_yenile(b)
-		if tip in HAYVAN_TUR: hayvan_koy(tip, Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI), HAYVAN_TUR[tip][1] + int(b.get("lv", 1)) - 1)
+		if tip in HAYVAN_TUR: hayvan_koy(tip, Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI), HAYVAN_TUR[tip][1] + int(b.get("lv", 1)) - 1, int(b["id"]))
 		if tip == "ev" and ilk_ev == null: ilk_ev = Vector3(b["x"] - YARI, 0, b["z"] - YARI)
 	yol_serit = serit; yol_kasaba = kasaba
 	yol_ciz(serit, t, kasaba)
@@ -292,13 +292,13 @@ func ekin_koy(e: Dictionary, merkez: Vector3, kap: Node3D = null):
 	if kap: kap.add_child(mi)
 	else: add_child(mi)
 
-func hayvan_koy(tip: String, merkez: Vector3, n: int):
+func hayvan_koy(tip: String, merkez: Vector3, n: int, bid := 0):
 	# web'deki gibi: ağıl/ahır/kümes içinde dolaşan hayvanlar (merkeze göre ±0.55, -0.1..0.9)
 	var H: Array = HAYVAN_TUR[tip]
 	for i in n:
 		var yer := Vector3(randf_range(-0.55, 0.55), 0.04, randf_range(-0.1, 0.9))
 		var d := model_koy(H[0], merkez + yer, float(H[2]), randf() * TAU)
-		if d: hayvanlar.append({"d": d, "m": merkez, "h": yer, "bekle": randf() * 3, "hiz": float(H[3])})
+		if d: hayvanlar.append({"d": d, "m": merkez, "h": yer, "bekle": randf() * 3, "hiz": float(H[3]), "bid": bid})
 
 var kosH := PackedFloat32Array()
 func dag_kur(t: Array):
@@ -998,6 +998,11 @@ func hayalet_tasi(k: Vector2i):
 
 func yerlestir_onay():
 	var bx: int = BOY.get(secili_tip, 1); var bb: Dictionary = BINA_BILGI[secili_tip]
+	if tasi_b != null:
+		if not yer_uygun(hayalet_karo.x, hayalet_karo.y, bx): return
+		var b: Dictionary = tasi_b; tasi_b = null
+		bina_kaldir_dunya(b); b["x"] = hayalet_karo.x; b["z"] = hayalet_karo.y; b["rot"] = hayalet_rot
+		karo_isle(b, true); bina_ciz_tek(b); yerlestir_iptal(); hesapla(); kayit_yaz_koy(); bildir("%s taşındı" % bb["ad"]); return
 	if not yer_uygun(hayalet_karo.x, hayalet_karo.y, bx) or not yeter(bb.get("cost", {})): return
 	var res: Dictionary = kayit_v["res"]
 	for kk in bb.get("cost", {}): res[kk] = float(res[kk]) - float(bb["cost"][kk])
@@ -1030,7 +1035,64 @@ func yol_eylem(b: Dictionary, klv: int):
 			kayit_v["b"].erase(bb); karo_bina.erase(k); yol_serit.erase(k); yol_yenile(); kayit_yaz_koy(); bilgi_panel.visible = false)
 func yerlestir_iptal():
 	if hayalet: hayalet.queue_free(); hayalet = null
+	if tasi_b != null: karo_isle(tasi_b, true); tasi_b = null
 	secili_tip = ""; yer_panel.visible = false
+# --- taşı / yık / döndür (web tasiBasla, pYik, pDon)
+var tasi_b = null
+func bina_merkez(b: Dictionary) -> Vector3:
+	var bx: int = BOY.get(b["tip"], 1); return Vector3(int(b["x"]) + bx / 2.0 - YARI, 0, int(b["z"]) + bx / 2.0 - YARI)
+func karo_isle(b: Dictionary, koy: bool):
+	var bx: int = BOY.get(b["tip"], 1)
+	for dz in bx:
+		for dx in bx:
+			var i := (int(b["z"]) + dz) * WN + int(b["x"]) + dx
+			if koy: karo_bina[i] = b
+			elif karo_bina.get(i) == b: karo_bina.erase(i)
+func bina_kaldir_dunya(b: Dictionary):
+	var id := int(b["id"])
+	var d = bina_dugum.get(id)
+	if d != null: d.kok.queue_free(); bina_dugum.erase(id)
+	for h in hayvanlar.duplicate():
+		if int(h.get("bid", 0)) == id: h.d.queue_free(); hayvanlar.erase(h)
+	if tarla_kap.has(id): tarla_kap[id].queue_free(); tarla_kap.erase(id); tarla_as.erase(id)
+	for k in tarlacilar.duplicate():
+		if k.get("b") == b: k.gr.queue_free(); tarlacilar.erase(k)
+func bina_ciz_tek(b: Dictionary):
+	var tip: String = b["tip"]; var m := bina_merkez(b)
+	var model := tip
+	if tip == "ev" and kayit_v.get("kasaba", false) == true: model = "evsehir" if kayit_v.get("sehir", false) == true else "evkasaba"
+	if not FileAccess.file_exists("res://modeller/%s.glb" % model): return
+	bina_koy_dunya(model, m, int(b.get("rot", 0)), int(b["id"])); bina_gorunum(b)
+	if b.get("insa") != null and int(b["insa"].get("hedef", 1)) == 1: return
+	if tip == "tarla": tarla_as.erase(int(b["id"])); ekin_yenile(b)
+	if tip in HAYVAN_TUR: hayvan_koy(tip, m, HAYVAN_TUR[tip][1] + int(b.get("lv", 1)) - 1, int(b["id"]))
+func tasi_basla(b: Dictionary):
+	bilgi_panel.visible = false
+	yerlestir_basla(b["tip"]); tasi_b = b; hayalet_rot = int(b.get("rot", 0))
+	karo_isle(b, false)  # kendi yeri boş sayılsın
+	hayalet_tasi(Vector2i(int(b["x"]), int(b["z"])))
+func yik_sor(b: Dictionary):
+	for c in eylem_kutu.get_children(): c.queue_free()
+	var kayip: bool = b.get("ekin") is Dictionary or (b.get("kuyruk") is Array and b["kuyruk"].size() > 0)
+	etiket(eylem_kutu, "%s yıkılsın mı? Harcanan malzemenin yarısı geri gelir.%s" % [BINA_BILGI[b["tip"]]["ad"], " İçindeki ekin/üretim kaybolur." if kayip else ""], 26, Color(0.6, 0.15, 0.1))
+	var bk := b
+	eylem_dugme("Evet, yık", func(): bina_yik(bk))
+	eylem_dugme("Vazgeç", func(): bina_goster(bk))
+func bina_yik(b: Dictionary):
+	var iade := {}
+	var ekl := func(c: Dictionary):
+		for r in c: iade[r] = int(iade.get(r, 0)) + int(floor(float(c[r]) / 2.0))
+	ekl.call(BINA_BILGI[b["tip"]].get("cost", {}))
+	var son := int(b["insa"]["hedef"]) if b.get("insa") != null else int(b.get("lv", 1))
+	for l in range(2, son + 1): ekl.call(yuk_maliyet(b["tip"], l))
+	for r in iade: harca(r, -float(iade[r]))
+	karo_isle(b, false); bina_kaldir_dunya(b); kayit_v["b"].erase(b)
+	bilgi_panel.visible = false; hesapla(); ust_guncelle(); kayit_yaz_koy(); bildir("%s yıkıldı" % BINA_BILGI[b["tip"]]["ad"])
+func bina_dondur(b: Dictionary):
+	b["rot"] = (int(b.get("rot", 0)) + 1) % 4
+	var d = bina_dugum.get(int(b["id"]))
+	if d != null: d.kok.rotation.y = int(b["rot"]) * PI / 2
+	kayit_yaz_koy()
 
 func kayit_yaz_koy():
 	if kayit_v.is_empty() or kayit_adi != "ornek": return
@@ -1074,6 +1136,11 @@ func ciftlik_eylem(b: Dictionary):
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	isci_eylem(b)
 	if b.get("insa") == null: topla_eylem(b)
+	var bt_: Dictionary = b
+	var hb := HBoxContainer.new(); hb.add_theme_constant_override("separation", 10)
+	for d in [["Yık", func(): yik_sor(bt_)], ["↔ Taşı", func(): tasi_basla(bt_)], ["↻ Döndür", func(): bina_dondur(bt_)]]:
+		var bt := Button.new(); bt.text = d[0]; bt.add_theme_font_size_override("font_size", 25); bt.custom_minimum_size = Vector2(0, 52); bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bt.pressed.connect(d[1]); hb.add_child(bt)
+	eylem_kutu.add_child(hb)
 	if b.get("insa") != null:
 		var ins: Dictionary = b["insa"]
 		var pb := ProgressBar.new(); pb.max_value = float(ins["top"]); pb.value = float(ins["t"]); pb.show_percentage = false; pb.custom_minimum_size = Vector2(0, 26); eylem_kutu.add_child(pb)
@@ -1144,7 +1211,7 @@ func insa_adim(dt: float):
 			bina_gorunum(b)
 			var tip: String = b["tip"]; var boy: int = BOY.get(tip, 1)
 			var m := Vector3(b["x"] + boy / 2.0 - YARI, 0, b["z"] + boy / 2.0 - YARI)
-			if tip in HAYVAN_TUR: hayvan_koy(tip, m, HAYVAN_TUR[tip][1] if yeni else 1)
+			if tip in HAYVAN_TUR: hayvan_koy(tip, m, HAYVAN_TUR[tip][1] if yeni else 1, int(b["id"]))
 			if tip == "tarla" and yeni: ekin_yenile(b)
 			kayit_yaz_koy()
 		else: bina_gorunum(b)
@@ -1795,6 +1862,14 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 12:
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--tasi=") or a.begins_with("--yik="):
+				var id := int(a.split("=")[1])
+				for b in kayit_v["b"].duplicate():
+					if int(b["id"]) != id: continue
+					if a.begins_with("--yik="): var o := float(kayit_v["res"]["odun"]); bina_yik(b); print("YIK odun ", o, " -> ", kayit_v["res"]["odun"], " var mi ", kayit_v["b"].has(b))
+					else: tasi_basla(b); hayalet_tasi(Vector2i(63, 62)); yerlestir_onay(); print("TASI ", b["x"], ",", b["z"], " karo ", karo_bina.get(62 * WN + 63) == b)
 	if kare == 12 and OS.get_cmdline_user_args().has("--hesap"):
 		var r := hesapla(); print("HESAP yer ", r["yer"], " evYer ", r["evYer"], " isciKul ", r["isciKul"], " hiz ", r["hiz"])
 	if kare == 12 and OS.get_cmdline_user_args().has("--ambar"):
