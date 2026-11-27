@@ -1072,6 +1072,7 @@ func ciftlik_eylem(b: Dictionary):
 	for c in eylem_kutu.get_children(): c.queue_free()
 	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
+	isci_eylem(b)
 	if b.get("insa") != null:
 		var ins: Dictionary = b["insa"]
 		var pb := ProgressBar.new(); pb.max_value = float(ins["top"]); pb.value = float(ins["t"]); pb.show_percentage = false; pb.custom_minimum_size = Vector2(0, 26); eylem_kutu.add_child(pb)
@@ -1206,7 +1207,9 @@ func uretim_ekle(b: Dictionary, r: Dictionary):
 	for k in r["girdi"]: harca(k, float(r["girdi"][k]))
 	var son := simdi_ms()
 	if b["kuyruk"].size() > 0: son = max(son, float(b["kuyruk"][-1]["bit"]))
-	b["kuyruk"].append({"u": r["urun"], "bas": son, "bit": son + float(r["sure"]) * 1000.0})
+	var hz := 1.0
+	if BINA_BILGI[b["tip"]].get("isci", false): hz = max(1.0, 0.4 + 0.6 * calisan(b))
+	b["kuyruk"].append({"u": r["urun"], "bas": son, "bit": son + float(r["sure"]) * 1000.0 / hz})
 	ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
 func uretim_topla(b: Dictionary):
 	var t := simdi_ms(); var kalan := []
@@ -1285,6 +1288,121 @@ func ambar_sat(k: String, n: int):
 	harca(k, n); var g := n * int(VERI["urun"].get(k, {}).get("fiyat", 1))
 	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + g
 	bildir("%d %s satıldı: +%d altın" % [n, urun_ad(k).to_lower(), g]); ust_guncelle(); kayit_yaz_koy(); ambar_ac()
+
+# --- iş gücü ve kendiliğinden gelir: web hesapla()/pasifAdim() ile aynı formüller
+const YASLI_YAS := 60; const YETISKIN_YAS := 18; const YIL_GUN := 6; const GUN_SN_W := 2880.0; const KESIM_SURE := 30.0
+const BS := 14; const SN_ := 9
+var durum := {}   # bina id -> {calisan, yer, kuyu, agac, komsu, hiz} (kayda yazılmaz, web'deki b.durum)
+var sonuc := {"yer": 0, "isciKul": 0, "evYer": 0, "hiz": {"odun": 0.0, "tas": 0.0}}
+func ev_mi(t: String) -> bool: return t in ["ev", "teras", "cadir", "apartman", "site", "rezidans"]
+func bina_boy(t: String) -> int: return int(BINA_BILGI.get(t, {}).get("boy", BOY.get(t, 1)))
+func bina_mesafe(a: Dictionary, b: Dictionary) -> int:
+	var sa := bina_boy(a["tip"]); var sb := bina_boy(b["tip"])
+	var dx: int = max(0, max(int(a["x"]), int(b["x"])) - min(int(a["x"]) + sa - 1, int(b["x"]) + sb - 1))
+	var dz: int = max(0, max(int(a["z"]), int(b["z"])) - min(int(a["z"]) + sa - 1, int(b["z"]) + sb - 1))
+	return max(dx, dz)
+func karo_acik(i: int) -> bool:
+	var ac = kayit_v.get("ac")
+	if not ac is Array: return true
+	var s := int(floor(float(i / WN) / BS)) * SN_ + int(floor(float(i % WN) / BS))
+	return s < ac.size() and int(ac[s]) == 1
+func komsu_say(b: Dictionary, tip: int) -> int:
+	var s := bina_boy(b["tip"]); var n := 0
+	for z in range(int(b["z"]) - 2, int(b["z"]) + s + 2):
+		for x in range(int(b["x"]) - 2, int(b["x"]) + s + 2):
+			if x < 0 or z < 0 or x >= WN or z >= WN: continue
+			var i := z * WN + x
+			if int(arazi_t[i]) == tip and not karo_bina.has(i) and karo_acik(i): n += 1
+	return n
+func agac_say(b: Dictionary, r := 7) -> int:
+	var n := 0
+	for z in range(int(b["z"]) - r, int(b["z"]) + r + 1):
+		for x in range(int(b["x"]) - r, int(b["x"]) + r + 1):
+			if x < 0 or z < 0 or x >= WN or z >= WN: continue
+			var i := z * WN + x
+			if int(arazi_t[i]) == 2 and not karo_bina.has(i) and karo_acik(i): n += 1
+	return n
+func isci_istek(b: Dictionary) -> int:
+	if b.get("isci") != null: return int(b["isci"])
+	return int(b.get("lv", 1)) if b["tip"] == "oduncu" else 1
+func isci_max(b: Dictionary) -> int: return min(12, 2 + 2 * int(b.get("lv", 1)))
+func calisan(b: Dictionary) -> int: return int(durum.get(int(b["id"]), {}).get("calisan", 0))
+func nufus_say() -> int: return max((kayit_v.get("nufus", []) as Array).size(), int(floor(float(kayit_v.get("halk", 0) if kayit_v.get("halk") != null else 0))))
+func yas(k: Dictionary) -> int:
+	var yg := 0.5 if (kayit_v.get("nufus") != null and kayit_v.get("yasSurum") != 2) else float(YIL_GUN)
+	return max(0, int(floor((simdi_ms() / 1000.0 / GUN_SN_W - float(k.get("dogum", 0))) / yg)))
+func emekli_say(yer: int) -> int:
+	var l := (kayit_v.get("nufus", []) as Array).filter(func(k): return yas(k) >= YETISKIN_YAS and not k.get("asker", false))
+	l.sort_custom(func(a, b): return int(a.get("id", 0)) < int(b.get("id", 0)))
+	return l.slice(0, min(40, yer)).filter(func(k): return yas(k) >= YASLI_YAS).size()
+func hesapla() -> Dictionary:
+	durum.clear()
+	var tam: Array = kayit_v["b"].filter(func(b): return b.get("insa") == null)
+	var kuyular := tam.filter(func(b): return b["tip"] == "kuyu")
+	var yer := 0
+	for b in tam:
+		if ev_mi(b["tip"]):
+			var kb := 0
+			if b["tip"] != "cadir":
+				for q in kuyular: if bina_mesafe(q, b) <= 2: kb = 2; break
+			var lv := int(b.get("lv", 1))
+			var y := 2 if b["tip"] == "cadir" else (4 + 2 * lv if b["tip"] == "apartman" else (20 * lv if b["tip"] == "site" else (60 * lv if b["tip"] == "rezidans" else 3 * lv + kb)))
+			durum[int(b["id"])] = {"yer": y, "kuyu": kb}; yer += y
+		if b["tip"] == "kale": yer += 20
+	var hiz := {"odun": 0.0, "tas": 0.0}
+	var ev_yer := yer; var nf := int(floor(nufus_say() * 0.45))
+	var kayip := int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0)
+	var is_gucu: int = max(0, max(yer, nf) - emekli_say(yer) - kayip); var kalan := is_gucu
+	var iscili: Array = kayit_v["b"].filter(func(b): return BINA_BILGI.get(b["tip"], {}).get("isci", false))
+	iscili.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+	var kul := 0
+	for b in iscili:
+		var ist := isci_istek(b); kul += ist
+		var c: int = 0 if b.get("insa") != null else max(0, min(ist, kalan)); kalan -= ist
+		var d := {"calisan": c}; durum[int(b["id"])] = d
+		var bb: Dictionary = BINA_BILGI[b["tip"]]
+		if b["tip"] == "oduncu":
+			# not: web'de oduncular ağacı tek tek keser; o yapılana kadar web'in çevrimdışı hesabı kullanılıyor
+			d["agac"] = agac_say(b)
+			if c > 0 and d["agac"] > 0: hiz["odun"] += (12 + 3 * int(b.get("lv", 1))) / KESIM_SURE * c
+			continue
+		if c > 0 and bb.has("uret"):
+			var kom := komsu_say(b, int(bb.get("komsu", 0))); d["komsu"] = kom
+			for r in bb["uret"]:
+				var v := (float(bb["uret"][r]) + kom * float(bb.get("kb", 0))) * int(b.get("lv", 1)) * (0.4 + 0.6 * c)
+				d["hiz"] = v; hiz[r] = float(hiz.get(r, 0)) + v
+	sonuc = {"evYer": max(0, ev_yer - kayip), "hiz": hiz, "yer": is_gucu, "isciKul": kul}
+	return sonuc
+func pasif_adim(dt: float):
+	if kayit_v.is_empty() or BINA_BILGI.is_empty(): return
+	var h: Dictionary = hesapla()["hiz"]
+	kayit_v["res"]["odun"] = float(kayit_v["res"].get("odun", 0)) + float(h["odun"]) * dt
+	kayit_v["res"]["tas"] = float(kayit_v["res"].get("tas", 0)) + float(h["tas"]) * dt
+func isci_eylem(b: Dictionary):
+	var bb: Dictionary = BINA_BILGI.get(b["tip"], {})
+	if b.get("insa") != null: return
+	if ev_mi(b["tip"]):
+		var d: Dictionary = durum.get(int(b["id"]), {})
+		etiket(eylem_kutu, "%d köylü%s" % [int(d.get("yer", 0)), "  (kuyu +2)" if int(d.get("kuyu", 0)) > 0 else ""], 26, Color(0.25, 0.17, 0.1))
+	if not bb.get("isci", false): return
+	var ist := isci_istek(b); var c := calisan(b); var bos: int = max(0, int(sonuc["yer"]) - int(sonuc["isciKul"]))
+	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); eylem_kutu.add_child(h)
+	var l := etiket(h, "İşçi: %d%s" % [c, ("  (%d istendi)" % ist) if c < ist else ""], 28, Color(0.25, 0.17, 0.1)); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bk := b
+	for d in [["−", -1], ["+", 1]]:
+		var bt := Button.new(); bt.text = "  %s  " % d[0]; bt.add_theme_font_size_override("font_size", 30); var yon: int = d[1]
+		bt.disabled = (ist <= 0) if yon < 0 else (ist >= isci_max(b))
+		bt.pressed.connect(func(): isci_degis(bk, yon)); h.add_child(bt)
+	etiket(eylem_kutu, "Boştaki köylü: %d · En çok %d işçi. İşçi arttıkça üretim hızlanır." % [bos, isci_max(b)], 22, Color(0.45, 0.38, 0.3))
+	if c == 0: etiket(eylem_kutu, "Çalışan yok — işçi ekle ya da ev kur.", 24, Color(0.75, 0.2, 0.15))
+func isci_degis(b: Dictionary, yon: int):
+	hesapla()
+	if yon > 0:
+		var bos: int = max(0, int(sonuc["yer"]) - int(sonuc["isciKul"]))
+		if bos <= 0: bildir("Boşta köylü yok. Ev kur ya da başka binadan işçi al."); return
+		b["isci"] = min(isci_max(b), isci_istek(b) + 1)
+	else: b["isci"] = max(0, isci_istek(b) - 1)
+	hesapla(); kayit_yaz_koy(); bina_goster(b)
 
 # --- siparişler: web siparisUret/siparisAdim/siparisTeslim ile aynı kurallar
 const SIP_OMUR := 45 * 60000.0
@@ -1444,6 +1562,7 @@ func cip_yap(ata: Control, ad: String) -> Label:
 	var l := Label.new(); l.add_theme_font_size_override("font_size", 27); l.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); h.add_child(l); return l
 
 func bina_goster(b: Dictionary):
+	hesapla()
 	var bb: Dictionary = BINA_BILGI.get(b["tip"], {"ad": b["tip"], "acik": "", "maxlv": 1})
 	var lv := int(b.get("lv", 1)); var ml := int(bb.get("maxlv", 1))
 	var yildiz := ""
@@ -1547,7 +1666,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insa_adim(1.0); cubuk_guncelle(); siparis_adim(); _oto_say += 1
+			insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -1576,6 +1695,8 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 12 and OS.get_cmdline_user_args().has("--hesap"):
+		var r := hesapla(); print("HESAP yer ", r["yer"], " evYer ", r["evYer"], " isciKul ", r["isciKul"], " hiz ", r["hiz"])
 	if kare == 12 and OS.get_cmdline_user_args().has("--ambar"):
 		if OS.get_cmdline_user_args().has("--sat"):
 			var once := float(kayit_v["res"]["altin"]); ambar_sat("un", -1); print("SAT altin ", once, " -> ", kayit_v["res"]["altin"], " un ", kayit_v["env"].get("un"))

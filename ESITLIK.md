@@ -15,6 +15,8 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Ambar: ürün listesi, tane fiyatı, "Sat 1" / "Hepsi" (web ambarCiz birebir)
 - [x] Siparişler (web siparisUret/Adim/Teslim/Kim/Max/Aralik birebir), seviye atlama ödülü (xpEkle)
 
+- [x] İş gücü (web hesapla birebir: ev yeri, kuyu +2, emekliler), işçi atama +/−, çalışana göre üretim hızı, oduncu/ocak kendiliğinden odun/taş (k04'te taş +36/dk web ile aynı)
+
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
   - Araştırma (27 Kasım): web her oyuncunun köyünü otomatik buluta yedekliyor (cvYedekle → kayitlar/{uid}: veri, zaman, ad, lv, kod).
@@ -23,10 +25,9 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
     Geçişten önce web'e "yeni sürüme geçerken köy kodunu not al" uyarısı. Google'a bağlı hesaplar için Google ile giriş ayrıca.
   - Canlı Firebase'de deneme hesabı açmak kullanıcı onayı bekliyor.
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
-- [ ] İşçi atama (+/-), çalışan sayısına göre üretim hızı
 - [ ] Köylü işleri: oduncu, taşçı, inşaatçı köylüler; ağaca/kayaya dokunup odun/taş toplama
 - [ ] Otomatik üretim (otoUretim), toplama binaları (TOPLA: kovan, bahçe, maden…), meyve ağaçları (AGAC)
-- [ ] Nüfus/ev kapasitesi hesabı (hesapla), mutluluk
+- [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
 - [ ] Taşı / yık, çit, lamba
 - [ ] Toplu ekim paneli
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
