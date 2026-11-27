@@ -5,7 +5,7 @@ const MALZEME := {"AhsapKoyu": "#5a3d27", "AhsapAcik": "#a67c53", "Tas": "#a7a29
 const CATI := ["#9c4b35", "#8a4232", "#a8603f", "#5d646c", "#6e4b33"]
 const OLCEK := {"fenisleri": 1.86, "kooperatif": 1.86, "hayiryeri": 2.9, "liman": 5.9, "meydan": 2.9, "karacadir": 1.0, "yukyeri": 1.82, "cadir": 1.5, "apartman": 0.92, "lokma": 0.42, "site": 1.86, "rezidans": 1.86, "hastane": 2.9, "universite": 2.9, "stadyum": 2.9, "esnafodasi": 1.86, "bayi": 1.86, "muhasebe": 0.92, "dayibasi": 0.92, "besi": 1.86, "karakol": 1.86, "itfaiye": 1.86, "fabrika": 1.86, "otogar": 1.86, "lise": 1.86, "saglik": 1.86, "belediye": 1.86, "gunes": 1, "ruzgar": 0.7, "maden": 0.9, "kuyumcu": 0.86, "sera": 0.9, "hamam": 1.86, "sifa": 0.86, "han": 1.86, "tarla": 0.96, "keresteci": 0.86, "kovan": 0.84, "elma": 0.66, "armut": 0.66, "atcilik": 1.86, "degirmen": 0.84, "firin": 0.84, "mandira": 0.84, "dokuma": 0.84, "kumes": 1.9, "ahir": 1.9, "agil": 1.9, "kahvehane": 1.86, "bakkal": 0.86, "berber": 0.86, "okul": 1.86, "park": 1.86, "hal": 2.9, "lojman": 0.96, "mezarlik": 1.86, "mezar": 0.33, "elektrikci": 0.86, "bobinaj": 0.86, "torna": 0.86, "cnc": 1.86, "benzinlik": 1.86, "cami": 1.86, "muhtar": 1.86, "ambar": 1.82, "bahce": 1.0, "ev": 1.0, "demirci": 1.0, "kuyu": 0.9, "oduncu": 1.0, "ocak": 1.0, "pazar": 2.0}
 const TIPMAP := {"ece3d0": "siva", "e2d4b6": "siva", "4b3222": "ahsap", "8a6241": "ahsap", "a67c53": "ahsap", "5a3d27": "ahsap", "5b3a22": "ahsap", "7a4a2c": "ahsap", "5e3d26": "ahsap", "a7a298": "tas", "858077": "tas", "bdb7ac": "tas", "9c4b35": "kiremit", "8a4232": "kiremit", "a8603f": "kiremit", "5d646c": "kiremit", "6e4b33": "kiremit", "56606b": "kiremit", "8a4a33": "kiremit", "c49b45": "saman", "d9bc6a": "saman", "c4a160": "saman", "6e5034": "toprak", "9b8a72": "toprak", "6f8f3e": "cim", "4a4f55": "metal", "7d848b": "metal", "26343a": "cam", "2f5f70": "su", "ff7a1a": "ates", "e6e0d2": "kumas", "8c3b32": "kumas", "3e5a7a": "kumas", "b08a3a": "kumas", "4f6b3f": "kumas", "6b4a6e": "kumas", "d9534f": "kumas", "f0b429": "kumas", "8a6a48": "toprak", "7a5a3a": "toprak", "5c4128": "toprak", "6a4a30": "toprak", "4a3524": "toprak"}
-const TRI := {"siva": ["siva", 1.4, 0.95, 1.35], "tas": ["tas", 2.4, 0.92, 1.35], "kaya": ["kaya", 1.8, 0.9, 1.35], "ahsap": ["ahsap", 2.2, 0.82, 1.35], "kiremit": ["kiremit", 3.0, 0.78, 1.5], "saman": ["saman", 2.6, 0.95, 1.35], "toprak": ["toprak", 1.2, 0.98, 1.35], "cim": ["cim", 0.22, 0.96, 1.35], "kum": ["kum", 0.6, 0.97, 1.35], "yaprak": ["yaprak", 2.4, 0.85, 1.25], "metal": ["metal", 2.0, 0.42, 1.1], "kumas": ["kumas", 4.0, 0.95, 1.15], "cam": ["", 1.0, 0.12, 1.35], "su": ["", 1.0, 0.1, 1.35], "duz": ["", 1.0, 0.8, 1.35], "kabuk": ["kabuk", 3.5, 0.92, 1.35]}
+const TRI := {"siva": ["siva", 1.4, 0.95, 1.35], "tas": ["tas", 2.4, 0.92, 1.35], "kaya": ["kaya", 1.8, 0.9, 1.35], "ahsap": ["ahsap", 2.2, 0.82, 1.35], "kiremit": ["kiremit", 3.0, 0.78, 1.5], "saman": ["saman", 2.6, 0.95, 1.35], "toprak": ["toprak", 1.2, 0.98, 0.72], "cim": ["cim", 0.22, 0.96, 1.35], "kum": ["kum", 0.6, 0.97, 1.35], "yaprak": ["yaprak", 2.4, 0.85, 1.25], "metal": ["metal", 2.0, 0.42, 1.1], "kumas": ["kumas", 4.0, 0.95, 1.15], "cam": ["", 1.0, 0.12, 1.35], "su": ["", 1.0, 0.1, 1.35], "duz": ["", 1.0, 0.8, 1.35], "kabuk": ["kabuk", 3.5, 0.92, 1.35]}
 const BOY := {"ev": 1, "gunes": 1, "ruzgar": 1, "maden": 1, "kuyumcu": 1, "sera": 1, "hamam": 2, "sifa": 1, "han": 2, "kahvehane": 2, "bakkal": 1, "berber": 1, "okul": 2, "benzinlik": 2, "bahce": 1, "tarla": 1, "ambar": 2, "oduncu": 1, "ocak": 1, "kumes": 2, "degirmen": 1, "demirci": 1, "esnafodasi": 2, "kooperatif": 2, "bayi": 2, "muhasebe": 1, "dayibasi": 1, "besi": 2, "ahir": 2, "kuyu": 1, "firin": 1, "pazar": 2, "mandira": 1, "agil": 2, "kovan": 1, "elma": 1, "armut": 1, "dokuma": 1, "balikci": 1, "iskele": 1, "asfalt": 1, "yol": 1, "kopru": 1, "cit": 1, "muhtar": 2, "meydan": 3, "park": 2, "cami": 2, "mezarlik2": 2, "mezarlik": 2, "atcilik": 2, "keresteci": 1, "elektrikci": 1, "bobinaj": 1, "torna": 1, "cnc": 2, "hal": 3, "hayiryeri": 3, "liman": 3, "cadir": 1, "apartman": 1, "hastane": 3, "universite": 3, "stadyum": 3, "site": 2, "rezidans": 2, "teras": 1, "lojman": 1, "lamba": 1, "lise": 2, "saglik": 2, "otogar": 2, "fabrika": 2, "karakol": 2, "itfaiye": 2, "imar_konut": 2, "imar_carsi": 2, "imar_sanayi": 2, "fenisleri": 2, "belediye": 2, "kale": 3}
 const KARO := 1.0
 const HAYVAN_TUR := {"ahir": ["hayvan_inek", 2, 1.1, 0.18], "agil": ["hayvan_koyun", 2, 1.1, 0.18], "kumes": ["hayvan_tavuk", 3, 1.2, 0.35]}
@@ -81,7 +81,7 @@ func cevre_kur():
 	e.background_mode = Environment.BG_COLOR; e.background_color = Color.html("#d3e1e6")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; e.ambient_light_color = Color.html("#a9ad9f"); e.ambient_light_energy = 0.24
 	e.tonemap_mode = Environment.TONE_MAPPER_LINEAR; e.tonemap_exposure = 1.0
-	e.adjustment_enabled = true; e.adjustment_saturation = 1.15; e.adjustment_contrast = 1.05
+	e.adjustment_enabled = true; e.adjustment_saturation = 1.3; e.adjustment_contrast = 1.08
 	e.fog_enabled = true; e.fog_light_color = Color.html("#d3e1e6"); e.fog_density = 0.003
 	ortam.environment = e; add_child(ortam); ortam_e = e
 
@@ -114,7 +114,7 @@ func web_kaydi_ciz(ad: String):
 	var kara := MeshInstance3D.new(); kara.mesh = st.commit(); add_child(kara)
 	var mt := StandardMaterial3D.new(); mt.roughness = 1.0
 	mt.albedo_texture = load("res://doku/cim.png"); mt.uv1_triplanar = true; mt.uv1_world_triplanar = true; mt.uv1_scale = Vector3.ONE * 0.22
-	var cc := Color.html("#7b9443"); mt.albedo_color = Color(cc.r * 0.92, cc.g * 0.95, cc.b * 0.7); kara.material_override = mt
+	var cc := Color.html("#7b9443"); mt.albedo_color = Color(cc.r * 0.84, cc.g * 0.86, cc.b * 0.55); kara.material_override = mt
 	# deniz: kara maskesini bulanıklaştır (kıyıya uzaklık), web'deki su shader'ı
 	var img := Image.create(WN, WN, false, Image.FORMAT_RF)
 	var km := PackedFloat32Array(); km.resize(WN * WN)
@@ -206,7 +206,7 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 28)
-	call_deferred("oto_topla")
+	call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
 	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
 	web_orman(t)
@@ -533,13 +533,33 @@ func tarlaci_koy(bl: Array, n: int):
 		if donem_kip != "" and randf() < 0.3: ad += donem_kip
 		var ins := insan_yap(ad)
 		var capa := Node3D.new(); ins.kR.add_child(capa); capa.position = Vector3(0, -0.11, 0.02); capa.rotation.x = 1.2
-		var c1 := MeshInstance3D.new(); var m1 := BoxMesh.new(); m1.size = Vector3(0.012, 0.012, 0.2); c1.mesh = m1; c1.material_override = sap; c1.position.z = 0.06; capa.add_child(c1)
-		var c2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.05, 0.035, 0.008); c2.mesh = m2; c2.material_override = dmr; c2.position = Vector3(0, -0.015, 0.16); capa.add_child(c2)
+		var c1 := MeshInstance3D.new(); var m1 := BoxMesh.new(); m1.size = Vector3(0.012, 0.012, 0.16); c1.mesh = m1; c1.material_override = sap; c1.position.z = 0.05; capa.add_child(c1)
+		var c2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.05, 0.035, 0.008); c2.mesh = m2; c2.material_override = dmr; c2.position = Vector3(0, -0.015, 0.13); capa.add_child(c2)
 		var mrk := Vector3(int(b["x"]) + 0.5 - YARI, 0, int(b["z"]) + 0.5 - YARI)
 		add_child(ins.gr); ins["m"] = mrk
 		ins.gr.position = mrk + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)); ins.gr.rotation.y = randf() * TAU
 		ins["faz"] = randf() * TAU; ins["hiz"] = randf_range(2.6, 3.4); ins["sure"] = randf_range(4, 9); ins["hedef"] = ins.gr.position
+		if k % 2 == 0 and b["tip"] == "tarla": ins["cubuk"] = cubuk_yap(ins.gr); ins["b"] = b
 		tarlacilar.append(ins)
+# web'deki gibi çalışanın başında iş çubuğu (ekinin büyümesi)
+const CUBUK_W := 0.26
+var _cubuk_m: Array = []
+func cubuk_yap(ata: Node3D) -> MeshInstance3D:
+	if _cubuk_m.is_empty():
+		for r in [Color(0.99, 0.96, 0.88, 0.92), Color(0.93, 0.62, 0.16)]:
+			var m := StandardMaterial3D.new(); m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED; m.billboard_keep_scale = true
+			m.no_depth_test = true; m.albedo_color = r; m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; m.render_priority = 2 + _cubuk_m.size(); _cubuk_m.append(m)
+	var arka := MeshInstance3D.new(); var q := QuadMesh.new(); q.size = Vector2(CUBUK_W + 0.02, 0.05); arka.mesh = q; arka.material_override = _cubuk_m[0]; arka.position.y = 0.44; arka.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; ata.add_child(arka)
+	var dol := MeshInstance3D.new(); dol.material_override = _cubuk_m[1]; dol.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; arka.add_child(dol)
+	return dol
+func cubuk_guncelle():
+	for k in tarlacilar:
+		if not k.has("cubuk"): continue
+		var b: Dictionary = k.b; var f := 0.0
+		if b.get("ekin") is Dictionary:
+			var e: Dictionary = b["ekin"]; f = clamp((simdi_ms() - float(e["bas"])) / max(1.0, float(e["bit"]) - float(e["bas"])), 0.0, 1.0)
+		var dol: MeshInstance3D = k.cubuk; dol.get_parent().visible = b.get("ekin") is Dictionary
+		var q := QuadMesh.new(); q.size = Vector2(max(0.004, CUBUK_W * f), 0.03); q.center_offset = Vector3(-CUBUK_W / 2 + CUBUK_W * f / 2, 0, 0.001); dol.mesh = q
 func tarlaci_adim(dt: float):
 	for k in tarlacilar:
 		var gr: Node3D = k.gr
@@ -643,7 +663,7 @@ func zemin_kur():
 	var m := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(N * 3, N * 3); m.mesh = pm
 	var mt := StandardMaterial3D.new(); mt.roughness = 1.0
 	mt.albedo_texture = load("res://doku/cim.png"); mt.uv1_triplanar = true; mt.uv1_world_triplanar = true; mt.uv1_scale = Vector3.ONE * 0.22
-	var cc := Color.html("#7b9443"); mt.albedo_color = Color(cc.r * 0.92, cc.g * 0.95, cc.b * 0.7)
+	var cc := Color.html("#7b9443"); mt.albedo_color = Color(cc.r * 0.84, cc.g * 0.86, cc.b * 0.55)
 	m.material_override = mt
 	m.position = Vector3(N / 2.0, 0, N / 2.0); add_child(m)
 	var yol := StandardMaterial3D.new(); yol.roughness = 1.0; yol.albedo_texture = load("res://doku/toprak.png"); yol.uv1_triplanar = true; yol.uv1_world_triplanar = true; yol.uv1_scale = Vector3.ONE * 1.2
@@ -677,6 +697,7 @@ func malz_yap(hx: String) -> StandardMaterial3D:
 		mt.albedo_texture = _doku[d[0]]
 		mt.uv1_triplanar = true; mt.uv1_scale = Vector3.ONE * float(d[1])
 		var pk: float = min(float(d[3]), 1.0); c = Color(c.r * pk, c.g * pk, c.b * pk)
+	if t == "toprak": c = Color(c.r * 1.12, c.g * 0.78, c.b * 0.5)  # web'deki gibi kızılımsı toprak
 	mt.albedo_color = c
 	if t == "cam": mt.metallic = 0.3; mt.roughness = 0.12
 	return mt
@@ -1356,7 +1377,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insa_adim(1.0); _oto_say += 1
+			insa_adim(1.0); cubuk_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
