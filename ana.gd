@@ -594,8 +594,83 @@ func tarlaci_adim(dt: float):
 		k.ust.rotation.x = 0.35 + 0.15 * (1.0 - v)
 		k.kR.rotation.x = -0.4 - 1.6 * v; k.kL.rotation.x = -0.3 - 1.3 * v
 		k.bL.rotation.x = 0.15; k.bR.rotation.x = -0.1
-func koylu_adim(dt: float):
+# --- inşaatçılar: web insaatciAta/insaatAdim — en yakın köylüler şantiyeye gider, kazma/kürekle çalışır
+var insa_isci := {}   # bina id -> şu an başında çalışan köylü sayısı
+func insa_ihtiyac(b: Dictionary) -> int:
+	if b["tip"] in ["tarla", "lamba"]: return 0
+	if b["tip"] in ["yol", "asfalt", "kopru", "cit"]: return 1
+	return min(3, 1 + bina_boy(b["tip"]))
+var _alet := {}
+func alet_yap(ad: String, boy: float) -> Node3D:
+	var s := sahne_yukle(ad); if s == null: return null
+	var a := aabb_bul(s); var h: float = max(0.001, a.size.y)
+	s.scale = Vector3.ONE * (boy / h)
+	var kap := Node3D.new(); kap.add_child(s); kap.position = Vector3(0, -0.1, 0.01); kap.rotation.x = PI / 2; kap.visible = false
+	return kap
+func insaatci_ata():
+	var santiye: Array = kayit_v.get("b", []).filter(func(b): return b.get("insa") != null and insa_ihtiyac(b) > 0)
+	var sinir: int = max(1, int(ceil(koyluler.size() * 0.6)))
+	var say := {}; var atanan := 0
 	for k in koyluler:
+		var b = k.get("insaB")
+		if b != null and santiye.has(b) and int(say.get(int(b["id"]), 0)) < insa_ihtiyac(b) and atanan < sinir:
+			say[int(b["id"])] = int(say.get(int(b["id"]), 0)) + 1; atanan += 1
+		elif b != null: insaat_birak(k)
+	for b in santiye:
+		var m := bina_merkez(b)
+		for j in range(int(say.get(int(b["id"]), 0)), insa_ihtiyac(b)):
+			if atanan >= sinir: break
+			var en = null; var d := 1e9
+			for k in koyluler:
+				if k.get("insaB") != null: continue
+				var dd: float = (k.gr.position - m).length_squared()
+				if dd < d: d = dd; en = k
+			if en == null: break
+			en["insaB"] = b; en["insaJ"] = j; atanan += 1; say[int(b["id"])] = int(say.get(int(b["id"]), 0)) + 1
+func insaat_birak(k: Dictionary):
+	k.erase("insaB"); k["ust"].rotation.x = 0
+	if k.has("alet"):
+		for a in k.alet.values():
+			if a: a.visible = false
+	# en yakın yola dön
+	var en := int(k.karo); var d := 1e9
+	for i in _yol_komsu:
+		var p := Vector3(i % WN + 0.5 - YARI, 0, i / WN + 0.5 - YARI); var dd: float = (p - k.gr.position).length_squared()
+		if dd < d: d = dd; en = i
+	k.karo = en; k.hedef = Vector3(en % WN + 0.5 - YARI, 0, en / WN + 0.5 - YARI); k.bekle = 0.0
+func insaat_adim(k: Dictionary, dt: float) -> void:
+	var b: Dictionary = k.insaB; var j: int = k.insaJ
+	var kurekci: bool = koyluler.find(k) % 2 == 1
+	if not k.has("alet"):
+		k["alet"] = {"kazma": alet_yap("kazma", 0.16), "kurek": alet_yap("kurek", 0.17)}
+		for a in k.alet.values():
+			if a: k.kR.add_child(a)
+	var m := bina_merkez(b); var s := bina_boy(b["tip"]); var a := j * 2.1 + int(b["id"]); var r := s / 2.0 + 0.16
+	var hedef_ := Vector3(m.x + cos(a) * r, 0, m.z + sin(a) * r)
+	var gr: Node3D = k.gr; var fark := hedef_ - gr.position; fark.y = 0
+	for t in k.alet.values():
+		if t: t.visible = false
+	if fark.length() > 0.04:
+		gr.position += fark.normalized() * min(fark.length(), 0.6 * dt)
+		gr.rotation.y = lerp_angle(gr.rotation.y, atan2(fark.x, fark.z), dt * 8)
+		k.faz += dt * 9.0; var sl := sin(k.faz) * 0.5
+		k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8; k.ust.rotation.x = 0
+		return
+	var alet = k.alet["kurek" if kurekci else "kazma"]
+	if alet: alet.visible = true
+	insa_isci[int(b["id"])] = int(insa_isci.get(int(b["id"]), 0)) + 1
+	gr.rotation.y = atan2(m.x - gr.position.x, m.z - gr.position.z)
+	k["insaF"] = float(k.get("insaF", randf() * 6)) + dt * (3.2 if kurekci else 4.2)
+	var f := sin(float(k.insaF))
+	k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
+	if kurekci:
+		k.ust.rotation.x = 0.35 + max(0.0, f) * 0.35; k.kR.rotation.x = -0.9 - max(0.0, -f) * 0.6; k.kL.rotation.x = -0.8 - max(0.0, -f) * 0.4
+	else:
+		k.ust.rotation.x = 0.1 + max(0.0, -f) * 0.3; k.kR.rotation.x = -2.7 + (f + 1) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.8
+func koylu_adim(dt: float):
+	insa_isci.clear()
+	for k in koyluler:
+		if k.get("insaB") != null: insaat_adim(k, dt); continue
 		var gr: Node3D = k.gr
 		var fark: Vector3 = k.hedef - gr.position; fark.y = 0
 		if k.bekle > 0:
@@ -1289,7 +1364,10 @@ func insa_adim(dt: float):
 	var yenile: bool = secili_b != null and secili_b.get("insa") != null
 	for b in kayit_v.get("b", []):
 		if b.get("insa") == null: continue
-		var ins: Dictionary = b["insa"]; ins["t"] = float(ins["t"]) + dt
+		# web insaAdim: kazma kürekle çalışan köylü varsa hızlı, yoksa yavaş ilerler
+		var ih := insa_ihtiyac(b); var ii := int(insa_isci.get(int(b["id"]), 0))
+		var hz: float = 1.0 if ih == 0 else 0.35 + 0.65 * min(1.0, float(ii) / ih)
+		var ins: Dictionary = b["insa"]; ins["t"] = float(ins["t"]) + dt * hz
 		if float(ins["t"]) >= float(ins["top"]):
 			var yeni: bool = int(ins["hedef"]) == 1
 			b["lv"] = int(ins["hedef"]); b["insa"] = null; bina_hazirla(b)
@@ -1780,6 +1858,7 @@ func siparis_ac():
 	etiket(liste, son, 24, Color(0.45, 0.38, 0.3))
 # kısa bildirim (web toast)
 var _bildirim: Label
+var _cekildi := false
 func bildir(yazi: String):
 	if _bildirim == null:
 		_bildirim = Label.new(); _bildirim.add_theme_font_size_override("font_size", 28); _bildirim.add_theme_color_override("font_color", Color.WHITE)
@@ -1920,7 +1999,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			insaatci_ata(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -1990,7 +2069,14 @@ func _process(dt):
 		var top := 0; for x in l: top += x[0]
 		print("TOPLAM ", top, " adet ", l.size()); for x in l.slice(0, 12): print(x)
 		print("OLC dugum=", Performance.get_monitor(Performance.OBJECT_NODE_COUNT), " nesne=", Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), " cizim=", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), " ucgen=", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), " fps=", Engine.get_frames_per_second())
-	if ekran_yolu != "" and kare == 20:
+	var bekle_sn := 0.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--bekle="): bekle_sn = float(a.substr(8))
+	if ekran_yolu != "" and kare >= 20 and Time.get_ticks_msec() / 1000.0 >= bekle_sn and not _cekildi:
+		_cekildi = true
+		print("INSAATCI ", koyluler.filter(func(k): return k.get("insaB") != null).size(), " calisan ", insa_isci, " koylu ", koyluler.size())
+		for b in kayit_v["b"]:
+			if b.get("insa") != null: print("INSA ", b["tip"], " ", b["insa"])
 		get_viewport().get_texture().get_image().save_png(ekran_yolu); get_tree().quit()
 
 func _notification(n):
