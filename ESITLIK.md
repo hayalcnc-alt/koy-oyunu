@@ -44,4 +44,4 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Rehberin ilk açılış (çadır→kuyu→tarla→ev) adımları ve dayıbaşı/bayi/benzinlik önerileri; teraslı ev inşası (glb yok)
 - [ ] Sesler, ayarlar (kalite, ses)
 - [ ] Sohbet / çevrimiçi
-- [ ] Yangın, cenaze/mezarlık, düğün vb. köy olayları — Yangın yapıldı (seviye 8+, ortalama yarım saatte bir, alev/duman/ışık, üretim durur, keyif −12, itfaiye 15 sn’de söndürür, yoksa “Köylülerle söndür · 20 altın”, gazete). Kalan: cenaze/mezarlık, düğün
+- [x] Yangın, cenaze/mezarlık, düğün: yangın (seviye 8+, alev/duman, itfaiye ya da 20 altınla köylüler söndürür); vefat (ömür 68-92, şifa evi/sağlık ocağı/hastane uzatır, günde en çok bir), vefat haberi penceresi, cenaze 13:00’te mezarlıkta (köylüler tabutun önünde saf tutar; camiye dokunulmadı), hayır lokması gazetesi; askere uğurlama ve düğün 16:30’da meydanda halay, askerden dönen nişanlanır, kız isteme olayı düğün planlar; eski kayıtlarda yaşlar düzeltilir (yasGoc/yasDuzelt). Not: web’deki tabutun camiden mezarlığa taşınması, gelinlik/damatlık, askeri kamyon, mezarlık genişlemesi henüz yok

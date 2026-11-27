@@ -733,6 +733,7 @@ func koylu_adim(dt: float):
 	insa_isci.clear()
 	sahne_adim(dt); gelen_adim(dt); yangin_adim(dt)
 	for k in koyluler:
+		if etkinlik_koylu(k, dt): continue
 		if sahne_koylu(k, dt): continue
 		if k.get("insaB") != null:
 			if k.get("od") != null: oduncu_birak(k)
@@ -2310,6 +2311,7 @@ func olay_odul(o: Dictionary) -> String:
 	if o.has("env"):
 		for k in o["env"]: env_ekle(k, int(o["env"][k])); l.append("+%d %s" % [o["env"][k], urun_ad(k)])
 	if o.has("xp"): xp_ekle(float(o["xp"])); l.append("+%d tecrübe" % o["xp"])
+	if o.has("dugun") and not kayit_v.get("ozel") is Dictionary: ozel_planla({"tur": "dugun", "damat": o["dugun"][0], "gelin": o["dugun"][1]})
 	if o.has("mutlu"): kayit_v["olayMutlu"] = simdi_ms() + float(o["mutlu"]) * 60000.0; l.append("köy memnun")
 	ust_guncelle(); kayit_yaz_koy(); return ", ".join(l)
 const OLAY_SART := {"tavuk": [15, "kumes"], "inek": [15, "ahir"], "kizisteme": [40, ""], "gurbetci": [80, ""], "imece": [30, ""], "kahvetv": [100, "kahvehane"], "yagmur": [15, ""], "akraba": [15, ""], "telefon": [150, "muhtar"], "elektrik": [250, ""], "otobus": [400, ""], "sunnet": [60, ""], "karne": [150, "okul"], "dugunkurban": [50, ""], "maya": [30, "mandira"], "baytar": [40, "ahir"], "yayla": [25, "agil"], "mektup": [100, ""]}
@@ -2341,7 +2343,7 @@ func olay_yap(id: String) -> Variant:
 			var g = rast_kisi(func(k): return k["cins"] == "k" and k.get("es") == null and yas(k) < 33)
 			if d == null or g == null: return null
 			return {"b": "Kız isteme", "m": "%s ailesiyle %s istemeye gitti. Gelin adayı kahveleri getirdi… %s kahvesinden tuz kokusu geliyor." % [d["ad"], belirtme(g["ad"]), ilgi(d["ad"])],
-				"s": [["Hiç bozmadan iç", "%s tuzlu kahveyi tek dikişte içti, gözünü bile kırpmadı. \"Bu çocuk sabırlıymış\" dendi, kız verildi!" % d["ad"], {"mutlu": 30, "xp": 6}], ["Gülüp \"bir şeker alayım\" de", "Herkes kahkahaya boğuldu, buzlar eridi. %s babası \"Esprili damat iyidir\" dedi." % ilgi(g["ad"]), {"mutlu": 30, "altin": 15}]]}
+				"s": [["Hiç bozmadan iç", "%s tuzlu kahveyi tek dikişte içti, gözünü bile kırpmadı. \"Bu çocuk sabırlıymış\" dendi, kız verildi! Düğün hazırlıkları başladı." % d["ad"], {"mutlu": 30, "xp": 6, "dugun": [d["id"], g["id"]]}], ["Gülüp \"bir şeker alayım\" de", "Herkes kahkahaya boğuldu, buzlar eridi. %s babası \"Esprili damat iyidir\" dedi." % ilgi(g["ad"]), {"mutlu": 30, "altin": 15}]]}
 		"gurbetci":
 			var a = rast_kisi()
 			return {"b": "Almancı geldi!", "m": "%s Almanya'daki amcası yaz tatiline geldi: Mercedes'in bagajı hediye dolu, köy meydanında kalabalık var." % (ilgi(a["ad"]) if a != null else "Köyün"),
@@ -2408,7 +2410,7 @@ func olay_adim():
 	_olay_sayac += 1
 	if _olay_sayac < (3 if zorla != "" else 30): return
 	_olay_sayac = 0
-	if _modal != null or insa_panel != null or hayalet != null or koyluler.size() < 2 or not sahne.is_empty(): return
+	if _modal != null or insa_panel != null or hayalet != null or koyluler.size() < 2 or not sahne.is_empty() or not _etk.is_empty(): return
 	var t := simdi_ms()
 	if zorla == "":
 		if t < float(kayit_v.get("olaySon", 0) if kayit_v.get("olaySon") != null else 0) + 15 * 60000.0 or randf() > 0.35: return
@@ -2675,7 +2677,7 @@ func goc_log(t: String, n: int):
 	if e == null: e = {"g": g, "t": t, "n": 0}; l.append(e)
 	e["n"] = int(e["n"]) + n; kayit_v["gocLog"] = l
 func goc_kontrol():
-	if not sahne.is_empty() or koyluler.size() < 2 or _modal != null or hayalet != null: return
+	if not sahne.is_empty() or koyluler.size() < 2 or _modal != null or hayalet != null or not _etk.is_empty(): return
 	var halk := float(kayit_v.get("halk", 0) if kayit_v.get("halk") != null else 0)
 	if nufus_say() < 80 or halk - (kayit_v.get("nufus", []) as Array).size() < AILE_KISI: return
 	var zorla := "--goc" in OS.get_cmdline_user_args()
@@ -2837,6 +2839,168 @@ func yangin_sondur(kim: String):
 	gazete(("%s çıkan yangını itfaiye kısa sürede söndürdü." if kim == "itfaiye" else "%s yangın çıktı, köylüler el birliğiyle söndürdü.") % bulunma(ad))
 	if secili_b == b and bilgi_panel.visible: bina_goster(b)
 var _yangin_test := false
+# --- vefat, cenaze, askerlik uğurlaması ve düğün (web olumKontrol/cenazeBitir/askerDugunAdim/ozelPlanla/ozelBitti)
+# cenaze öğle namazından sonra mezarlıkta (camiye dokunulmaz); uğurlama ve düğün 16:30'da köy meydanında, kısa sürer
+const OZEL_BAS_S := 16.5
+const OZEL_SURE_S := 110.0 / 120.0   # oyun saati cinsinden
+const CENAZE_BAS_S := 13.0
+const CENAZE_SURE_S := 195.0 / 120.0
+const ASKER_GUN := 0.5
+func gun_kesir() -> float: return simdi_ms() / 1000.0 / GUN_SN_W
+func kisi_bul(id) -> Variant:
+	for k in kayit_v.get("nufus", []):
+		if k["id"] == id: return k
+	return null
+func omur(k: Dictionary) -> int:
+	return 68 + (int(k["id"]) * 7919) % 25 + (6 if bina_var("saglik") else (3 if bina_var("sifa") else 0)) + (4 if bina_var("hastane") else 0)
+var _yas_goc := false
+func olum_kontrol():
+	if not _yas_goc: _yas_goc = true; yas_gocu()
+	var bugun := gun_no(); var h := oyun_saati(); var mez := bina_var("mezarlik")
+	if not kayit_v.get("mezarlar") is Array: kayit_v["mezarlar"] = []
+	if kayit_v.get("cenaze") is Dictionary:
+		var c: Dictionary = kayit_v["cenaze"]
+		if mez and (bugun > int(c["gun"]) or (bugun == int(c["gun"]) and h >= CENAZE_BAS_S + CENAZE_SURE_S)): cenaze_bitir()
+		elif not mez and bugun > int(c["gun"]): c["gun"] = bugun
+		return
+	var l: Array = kayit_v.get("nufus", [])
+	if l.size() < 6 or float(kayit_v.get("sonOlum", 0) if kayit_v.get("sonOlum") != null else 0) >= bugun or h < 6.5 or h > 11.5: return
+	var yasli: Array = l.filter(func(k): return yas(k) >= omur(k))
+	if yasli.is_empty(): return
+	yasli.sort_custom(func(a, b): return float(a["dogum"]) < float(b["dogum"]))
+	var olen: Dictionary = yasli[0]; l.erase(olen)
+	var ad := "%s %s (%d)" % [olen["ad"], "Nine" if olen["cins"] == "k" else "Dede", yas(olen)]
+	kayit_v["cenaze"] = {"gun": bugun, "ad": ad}; gazete("%s Hakk'ın rahmetine kavuştu." % ad)
+	kayit_v["kayip"] = int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0) + 1; kayit_v["sonOlum"] = bugun
+	hesapla(); kayit_yaz_koy()
+	modal_ac("Vefat haberi", ["Köyümüzden %s Hakk'ın rahmetine kavuştu." % ad, "Cenazesi bugün öğle namazından sonra kaldırılacak. Bütün köy mezarlıkta toplanıp defnedecek." if mez else "Köyde mezarlık yok! Defin için Mezarlık kurmalısın."], [["Allah rahmet eylesin", func(): pass]])
+func cenaze_bitir():
+	var c: Dictionary = kayit_v["cenaze"]
+	if bina_var("mezarlik"): gazete("Lokmacı Samet, %s için mezarlığın önünde hayır lokması dağıttı. Allah rahmet eylesin." % c["ad"])
+	kayit_v["mezarlar"].append({"ad": c["ad"], "gun": c["gun"]}); kayit_v.erase("cenaze"); kayit_yaz_koy()
+func ozel_planla(o: Dictionary):
+	o["gun"] = gun_no() + (0 if oyun_saati() < OZEL_BAS_S - 0.2 else 1); kayit_v["ozel"] = o; kayit_yaz_koy()
+func ozel_bitti():
+	var o: Dictionary = kayit_v["ozel"]
+	if o["tur"] == "ugurlama":
+		var k = kisi_bul(o["kisi"])
+		if k != null:
+			k["asker"] = {"bit": gun_kesir() + ASKER_GUN}; kayit_v["kayip"] = int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0) + 1; hesapla()
+			gazete("%s davul zurnayla askere uğurlandı." % k["ad"]); bildir("%s askere gitti. Yolun açık olsun, bir yıl sonra dönecek!" % k["ad"])
+	elif o["tur"] == "dugun":
+		var d = kisi_bul(o["damat"]); var g = kisi_bul(o["gelin"])
+		if d != null and g != null:
+			d["es"] = g["id"]; g["es"] = d["id"]
+			gazete("%s ile %s dünya evine girdi, meydanda halaylar çekildi." % [d["ad"], g["ad"]]); bildir("%s ile %s evlendi! Allah bir yastıkta kocatsın." % [d["ad"], g["ad"]])
+	kayit_v.erase("ozel"); kayit_yaz_koy()
+# web yasGoc + yasDuzelt: eski kayıtların yaş hızı yeni sisteme taşınır, ömrünü çoktan aşmış köylüler gerçekçi yaşa çekilir
+func yas_gocu():
+	var l = kayit_v.get("nufus")
+	if not l is Array: return
+	var g := gun_kesir()
+	if kayit_v.get("yasSurum") != 2:
+		for k in l: var a: float = max(0.0, (g - float(k["dogum"])) / 0.5); k["dogum"] = g - a * YIL_GUN
+		kayit_v["yasSurum"] = 2
+		var yet: Array = l.filter(func(k): return yas(k) >= YETISKIN_YAS); var yasli: Array = yet.filter(func(k): return yas(k) >= YASLI_YAS)
+		var fazla := yasli.size() - int(floor(yet.size() * 0.3))
+		if fazla > 0:
+			yasli.sort_custom(func(a, b): return (int(a["id"]) * 7919 % 101) < (int(b["id"]) * 7919 % 101))
+			for k in yasli.slice(0, fazla): var y := 22 + (int(k["id"]) * 7919 % 33); k["dogum"] = g - y * YIL_GUN - YIL_GUN * 0.5
+	for k in l:
+		var o := omur(k)
+		if yas(k) > o + 2: var y2: int = max(YASLI_YAS + 5, o - 1 - (int(k["id"]) % 12)); k["dogum"] = g - y2 * YIL_GUN - YIL_GUN * 0.5
+var _etk_test := false
+func asker_dugun_adim():
+	var l: Array = kayit_v.get("nufus", [])
+	if not _etk_test:
+		_etk_test = true
+		var ar := OS.get_cmdline_user_args()
+		if "--duguntest" in ar: kayit_v["ozel"] = {"tur": "dugun", "damat": l[0]["id"], "gelin": l[1]["id"], "gun": gun_no()}
+		if "--cenazetest" in ar: kayit_v["cenaze"] = {"gun": gun_no(), "ad": "Deneme Dede (90)"}
+	if kayit_v.get("ciftKur") != true:
+		for k in l:
+			if k["cins"] == "e" and yas(k) >= 23: k["askerlikBitti"] = true
+		var be: Array = l.filter(func(k): return k["cins"] == "e" and yas(k) >= 23 and k.get("es") == null); var bk: Array = l.filter(func(k): return k["cins"] == "k" and yas(k) >= 20 and k.get("es") == null)
+		for i in min(be.size(), bk.size()): be[i]["es"] = bk[i]["id"]; bk[i]["es"] = be[i]["id"]
+		kayit_v["ciftKur"] = true
+	var oz = kayit_v.get("ozel")
+	if oz is Dictionary and (gun_no() > int(oz["gun"]) or (gun_no() == int(oz["gun"]) and oyun_saati() >= OZEL_BAS_S + OZEL_SURE_S)): ozel_bitti()
+	if nufus_say() < 15 or kayit_v.get("ozel") is Dictionary: return
+	for k in l:
+		if k.get("asker") is Dictionary and gun_kesir() >= float(k["asker"]["bit"]):
+			k.erase("asker"); k["askerlikBitti"] = true
+			if int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0) > 0: kayit_v["kayip"] = int(kayit_v["kayip"]) - 1; hesapla()
+			gazete("%s askerliğini bitirip köye döndü." % k["ad"]); bildir("%s askerden döndü! Köy onu sevinçle karşıladı." % k["ad"])
+			var gl: Array = l.filter(func(q): return q["cins"] == "k" and q.get("es") == null and yas(q) >= 19 and yas(q) <= 35)
+			gl.sort_custom(func(a, b): return abs(yas(a) - yas(k)) < abs(yas(b) - yas(k)))
+			if not gl.is_empty():
+				ozel_planla({"tur": "dugun", "damat": k["id"], "gelin": gl[0]["id"]})
+				bildir("%s ile %s nişanlandı! Düğün %s 16:30'da köy meydanında." % [k["ad"], gl[0]["ad"], "bugün" if int(kayit_v["ozel"]["gun"]) == gun_no() else "yarın"])
+			kayit_yaz_koy(); return
+	for k in l:
+		if k["cins"] == "e" and k.get("askerlikBitti") != true and not k.get("asker") is Dictionary and yas(k) >= 20:
+			ozel_planla({"tur": "ugurlama", "kisi": k["id"]})
+			bildir("%s askere çağrıldı! %s 16:30'da köy meydanında davul zurnayla uğurlanacak." % [k["ad"], "Bugün" if int(kayit_v["ozel"]["gun"]) == gun_no() else "Yarın"])
+			return
+# etkinlik: şu an cenaze ya da uğurlama/düğün var mı, nerede
+func etkinlik() -> Dictionary:
+	var h := oyun_saati()
+	var c = kayit_v.get("cenaze")
+	if c is Dictionary and int(c["gun"]) == gun_no() and h >= CENAZE_BAS_S and h < CENAZE_BAS_S + CENAZE_SURE_S and bina_var("mezarlik"):
+		for b in kayit_v["b"]:
+			if b["tip"] == "mezarlik" and b.get("insa") == null: return {"tur": "cenaze", "yer": bina_merkez(b), "f": (h - CENAZE_BAS_S) / CENAZE_SURE_S}
+	var o = kayit_v.get("ozel")
+	if o is Dictionary and int(o["gun"]) == gun_no() and h >= OZEL_BAS_S and h < OZEL_BAS_S + OZEL_SURE_S:
+		var yer := Vector3(hedef.x, 0, hedef.z)
+		for t in ["meydan", "muhtar"]:
+			var bulundu := false
+			for b in kayit_v["b"]:
+				if b["tip"] == t and b.get("insa") == null: yer = kapi_poz(b) + (kapi_poz(b) - bina_merkez(b)).normalized() * 0.6; bulundu = true; break
+			if bulundu: break
+		return {"tur": o["tur"], "yer": yer, "f": (h - OZEL_BAS_S) / OZEL_SURE_S}
+	return {}
+var _etk := {}
+var _etk_kok: Node3D
+func etkinlik_adim():
+	var e := etkinlik()
+	if e.is_empty() != _etk.is_empty() or (not e.is_empty() and e["tur"] != _etk.get("tur")):
+		if _etk_kok: _etk_kok.queue_free(); _etk_kok = null
+		for k in koyluler: k.erase("etkH"); k.ust.rotation.x = 0
+		if not e.is_empty():
+			_etk_kok = Node3D.new(); add_child(_etk_kok); _etk_kok.position = e["yer"]
+			if e["tur"] == "cenaze":
+				var t := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(0.12, 0.07, 0.3); t.mesh = bm; t.position.y = 0.06
+				var mt := StandardMaterial3D.new(); mt.albedo_color = Color.html("#2f5a35"); t.material_override = mt; _etk_kok.add_child(t)  # yeşil örtülü tabut
+			var kat: Array = koyluler.filter(func(k): return k.get("insaB") == null)
+			kat.sort_custom(func(a, b): return (a.gr.position - e["yer"]).length_squared() < (b.gr.position - e["yer"]).length_squared())
+			kat = kat.slice(0, 18)
+			for i in kat.size():
+				var k: Dictionary = kat[i]; oduncu_birak(k)
+				if e["tur"] == "cenaze":
+					var sira := i / 6; var yan := i % 6
+					k["etkH"] = e["yer"] + Vector3((yan - 2.5) * 0.16, 0, 0.35 + sira * 0.18)
+				else:
+					var a := TAU * i / kat.size(); k["etkH"] = e["yer"] + Vector3(cos(a), 0, sin(a)) * 0.6
+				k["etkI"] = i
+	_etk = e
+	if not e.is_empty() and ("--duguntest" in OS.get_cmdline_user_args() or "--cenazetest" in OS.get_cmdline_user_args()): hedef = e["yer"]; kamera_guncelle()
+func etkinlik_koylu(k: Dictionary, dt: float) -> bool:
+	if _etk.is_empty() or not k.has("etkH"): return false
+	var hz: float = k.hiz; k.hiz = 0.4
+	var vardi := koylu_yuru(k, k.etkH, dt); k.hiz = hz
+	if not vardi: return true
+	var m: Vector3 = _etk["yer"]; k.gr.rotation.y = lerp_angle(k.gr.rotation.y, atan2(m.x - k.gr.position.x, m.z - k.gr.position.z), dt * 6)
+	k.bL.rotation.x = 0.0; k.bR.rotation.x = 0.0
+	if _etk["tur"] == "cenaze":
+		k.ust.rotation.x = lerp(k.ust.rotation.x, 0.25, dt * 3)
+		k.kR.rotation.x = lerp(k.kR.rotation.x, -0.5, dt * 3); k.kL.rotation.x = k.kR.rotation.x  # eller bağlı, başlar eğik
+	else:
+		# halay: kollar havada, omuz omuza sallanır, ritimle adım
+		var t := simdi_ms() / 1000.0 * 4.0 + int(k.etkI) * 0.0
+		k.kR.rotation.x = -2.4 + sin(t) * 0.25; k.kL.rotation.x = -2.4 + sin(t) * 0.25
+		k.bL.rotation.x = max(0.0, sin(t)) * 0.5; k.bR.rotation.x = max(0.0, -sin(t)) * 0.5
+		k.gr.position.y = abs(sin(t)) * 0.015
+	return true
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
@@ -3293,7 +3457,8 @@ func _process(dt):
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
 			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
-			if _halk_say % 2 == 0: halk_adim()
+			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim()
+			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
