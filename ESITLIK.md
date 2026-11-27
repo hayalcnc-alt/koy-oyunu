@@ -18,6 +18,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] İş gücü (web hesapla birebir: ev yeri, kuyu +2, emekliler), işçi atama +/−, çalışana göre üretim hızı, oduncu/ocak kendiliğinden odun/taş (k04'te taş +36/dk web ile aynı)
 - [x] Otomatik toplama (otoTopla: tarla, hayvan, atölye, ağaç, kovan) + xp, otomatik üretim (otoUretim: sıra doldurma, yemleme, sipariş önceliği, yedek), toplama binaları (TOPLA), meyve ağaçları (AGAC), dükkân mesaisi, "Otomatik açık/kapalı"
 - [x] Taşı (ücretsiz, hayalet ile), yık (malzemenin yarısı geri, yükseltmeler dahil), döndür
+- [x] Çit (tarla/ağaç/kovan üstüne, komşu çitler birleşir, "Çiti kaldır" +1 odun), sokak lambası (yol kenarı/boş yer, döndür, gece ışığı); yol_yenile teras/lambaları da yeniden kuruyor
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -29,7 +30,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
 - [ ] Köylü işleri: oduncu, taşçı, inşaatçı köylüler; ağaca/kayaya dokunup odun/taş toplama
 - [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
-- [ ] Çit (tarla üstüne), sokak lambası yerleştirme
+- [ ] İnşaatta orman/kaya karosuna kurma (web temizle: odun/taş çıkar) — Godot şimdilik sadece çayıra kurduruyor
 - [ ] Toplu ekim paneli
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
