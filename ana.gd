@@ -1064,6 +1064,11 @@ func arayuz_kur():
 	var sp := PanelContainer.new(); sp.add_theme_stylebox_override("panel", cip_stil()); sp.set_anchors_preset(Control.PRESET_TOP_RIGHT); sp.offset_left = -300; sp.offset_right = -14; sp.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sp.offset_top = 14; cl.add_child(sp)
 	var sh := HBoxContainer.new(); sp.add_child(sh); sh.add_child(ikon_yap("saat", 34))
 	ust_saat = Label.new(); ust_saat.add_theme_font_size_override("font_size", 27); ust_saat.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); sh.add_child(ust_saat)
+	# keyif çipi (web mutluCip): dokununca nedenleri gösterir
+	ust_keyif = Button.new(); ust_keyif.add_theme_font_size_override("font_size", 25); ust_keyif.add_theme_color_override("font_color", Color(1, 0.96, 0.88))
+	var ks := cip_stil(); ust_keyif.add_theme_stylebox_override("normal", ks); ust_keyif.add_theme_stylebox_override("hover", ks); ust_keyif.add_theme_stylebox_override("pressed", ks)
+	ust_keyif.set_anchors_preset(Control.PRESET_TOP_RIGHT); ust_keyif.offset_left = -200; ust_keyif.offset_right = -14; ust_keyif.offset_top = 70; ust_keyif.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ust_keyif.pressed.connect(memnun_ac); cl.add_child(ust_keyif)
 	ust_guncelle()
 	# alt menü: Siparişler, İNŞA, Ambar (şimdilik görsel)
 	var alt := HBoxContainer.new(); alt.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); alt.offset_top = -150; alt.offset_bottom = -30; alt.alignment = BoxContainer.ALIGNMENT_CENTER; alt.add_theme_constant_override("separation", 26); cl.add_child(alt)
@@ -1456,6 +1461,13 @@ func ciftlik_eylem(b: Dictionary):
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	isci_eylem(b)
 	if b.get("insa") == null: topla_eylem(b)
+	if b["tip"] == "belediye" and b.get("insa") == null:
+		etiket(eylem_kutu, "Kasa: %d altın · vergi geliri %d/dk · bakım %d/dk" % [int(float(kayit_v.get("kasa", 0) if kayit_v.get("kasa") != null else 0)), int(vergi_geliri() * float(vergi_kademe()["k"])), int(belediye_gider())], 24, Color(0.25, 0.17, 0.1))
+		var vh := HBoxContainer.new(); vh.add_theme_constant_override("separation", 8); eylem_kutu.add_child(vh)
+		for v in ["dusuk", "orta", "yuksek"]:
+			var vb_ := Button.new(); vb_.text = "Vergi: " + VERGI[v]["ad"]; vb_.toggle_mode = true; vb_.button_pressed = (kayit_v.get("vergi", "orta") if kayit_v.get("vergi") != null else "orta") == v
+			vb_.add_theme_font_size_override("font_size", 22); vb_.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var vv: String = v; var bb3 := b; vb_.pressed.connect(func(): kayit_v["vergi"] = vv; kayit_yaz_koy(); bina_goster(bb3)); vh.add_child(vb_)
 	var cit_v = ek_bul(int(b["x"]), int(b["z"]), "cit")
 	if cit_v is Dictionary and b["tip"] != "cit":
 		var cd: Dictionary = cit_v; var bb2 := b
@@ -1714,7 +1726,7 @@ func topla_sure(b: Dictionary) -> float:
 	var K: Dictionary = VERI["topla"][b["tip"]]
 	var s := float(K["sure"])
 	if BINA_BILGI.get(b["tip"], {}).get("isci", false): s = s / max(1.0, 0.4 + 0.6 * calisan(b))
-	return s
+	return s * memnun_carpani()
 func kovan_say(b: Dictionary) -> int:
 	if not b.get("kovan") is Dictionary: b["kovan"] = {"son": simdi_ms()}
 	var K: Dictionary = VERI["topla"][b["tip"]]
@@ -1895,6 +1907,99 @@ func pasif_adim(dt: float):
 	var h: Dictionary = hesapla()["hiz"]
 	kayit_v["res"]["odun"] = float(kayit_v["res"].get("odun", 0)) + float(h["odun"]) * dt
 	kayit_v["res"]["tas"] = float(kayit_v["res"].get("tas", 0)) + float(h["tas"]) * dt
+	# web pasifAdim: enerji ve turist geliri hazineye; belediye varsa vergi kasaya, bakım kasadan, kasa taşarsa hazineye
+	var m := muhasebe_carpan(); var diger := (enerji_geliri() + turist_geliri()) * m * dt / 60.0
+	if not bina_var("belediye"):
+		kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + diger; return
+	var gelir := vergi_geliri() * float(vergi_kademe()["k"]) * m; var gider := belediye_gider()
+	kayit_v["kasa"] = float(kayit_v.get("kasa", 0) if kayit_v.get("kasa") != null else 0) + (gelir - gider) * dt / 60.0
+	var tavan: float = max(500.0, gelir * 5)
+	if float(kayit_v["kasa"]) > tavan:
+		kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + float(kayit_v["kasa"]) - tavan; kayit_v["kasa"] = tavan
+	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + diger
+	if float(kayit_v["kasa"]) < 0:
+		kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) + float(kayit_v["kasa"]); kayit_v["kasa"] = 0.0
+const HIZMET_KAP := {"okul": 3000, "lise": 10000, "saglik": 8000, "hastane": 60000, "karakol": 20000, "itfaiye": 25000, "hamam": 10000}
+const YETER_KAP := {"park": 2500, "kahvehane": 2000, "universite": 150000, "stadyum": 150000, "okul": 3000, "lise": 10000, "saglik": 8000, "hastane": 60000, "karakol": 20000, "itfaiye": 25000, "hamam": 10000}
+const VERGI := {"dusuk": {"ad": "Düşük", "k": 0.6, "m": 6}, "orta": {"ad": "Orta", "k": 1.0, "m": 0}, "yuksek": {"ad": "Yüksek", "k": 1.5, "m": -10}}
+func vergi_kademe() -> Dictionary: return VERGI.get(kayit_v.get("vergi", "orta") if kayit_v.get("vergi") != null else "orta", VERGI["orta"])
+func muhasebe_carpan() -> float: return 1.2 if bina_var("muhasebe") else 1.0
+func enerji_geliri() -> float:
+	var g := 0.0; var h := oyun_saati(); var gunduz := h > 6.5 and h < 19; var kis: float = mevsim()["kis"]
+	for b in kayit_v["b"]:
+		if b.get("insa") != null: continue
+		if b["tip"] == "gunes" and gunduz: g += 2 * int(b.get("lv", 1)) * (1 - kis * 0.6)
+		if b["tip"] == "ruzgar": g += 3 * int(b.get("lv", 1))
+	return g
+func turist_geliri() -> float:
+	return ((3 + memnun_puan() / 8.0) * (1.2 if bina_var("karakol") else 1.0) if bina_var("otogar") else 0.0) + (25.0 if bina_var("stadyum") else 0.0)
+func vergi_geliri() -> float:
+	if not bina_var("belediye"): return 0.0
+	var isim := (kayit_v.get("nufus", []) as Array).size(); var diger: int = max(0, nufus_say() - isim)
+	return (isim * 0.3 + diger * 0.05) * (1.2 if bina_var("universite") else 1.0)
+func belediye_gider() -> float:
+	var g := 0.0
+	for b in kayit_v["b"]:
+		if b.get("insa") != null: continue
+		if HIZMET_KAP.has(b["tip"]) or b["tip"] in ["park", "fenisleri"]: g += 12.0 if b["tip"] == "hastane" else (6.0 if b["tip"] == "fenisleri" else 2.0)
+	return g
+# --- köy memnuniyeti: web memnuniyet() (yangın, çöp, makine işsizliği, sanayi dumanı henüz yok)
+func hizmet_oran(t: String) -> float:
+	var n := nufus_say()
+	if not kasaba_mi() or n < 1500: return 1.0
+	return min(1.0, sayi_tam(t) * float(YETER_KAP[t]) / n)
+func sayi_tam(t: String) -> int: return kayit_v["b"].filter(func(b): return b["tip"] == t and b.get("insa") == null).size()
+func bayram() -> String:
+	var g := gun_no() % 14
+	return "Ramazan Bayramı" if g == 7 else ("Kurban Bayramı" if g == 0 else "")
+func memnuniyet() -> Dictionary:
+	var l := []
+	var ekle := func(ok: bool, puan: float, metin: String):
+		if ok: l.append([puan, metin])
+	var hizmet := func(t: String, puan: float, metin: String):
+		if not bina_var(t): return
+		var o := hizmet_oran(t) if YETER_KAP.has(t) else 1.0
+		l.append([round(puan * o * 10) / 10.0, metin + ((" (yetmiyor: %d tane)" % sayi_tam(t)) if o < 0.95 else "")])
+	ekle.call(bina_var("cami"), 10, "Cami"); hizmet.call("kahvehane", 8, "Kahvehane"); hizmet.call("park", 6, "Çocuk parkı"); hizmet.call("okul", 8, "Okul")
+	hizmet.call("hamam", 6, "Hamam"); ekle.call(bina_var("sifa"), 6, "Şifa evi"); hizmet.call("saglik", 10, "Sağlık ocağı"); hizmet.call("lise", 6, "Lise"); ekle.call(bina_var("belediye"), 6, "Belediye"); hizmet.call("hastane", 8, "Devlet hastanesi"); hizmet.call("universite", 6, "Üniversite"); hizmet.call("stadyum", 8, "Stadyum")
+	ekle.call(bina_var("bakkal"), 4, "Bakkal"); ekle.call(bina_var("berber"), 3, "Berber"); ekle.call(bina_var("mezarlik"), 3, "Mezarlık")
+	var lamba := sayi_tam("lamba"); ekle.call(lamba > 0, min(8, lamba * 2), "Sokak lambası (%d)" % lamba)
+	ekle.call(sayi_tam("yol") + sayi_tam("asfalt") >= 4, 5, "Yollar"); ekle.call(sayi_tam("asfalt") >= 6, 6, "Asfalt yollar")
+	var bah := sayi_tam("bahce"); ekle.call(bah > 0, min(6, bah * 2), "Ev bahçeleri (%d)" % bah)
+	ekle.call(bayram() != "", 10, "Bayram havası"); ekle.call(float(kayit_v.get("olayMutlu", 0) if kayit_v.get("olayMutlu") != null else 0) > simdi_ms(), 6, "Köyde güzel bir olay konuşuluyor")
+	hizmet.call("itfaiye", 5, "İtfaiye"); hizmet.call("karakol", 6, "Polis karakolu"); ekle.call(bina_var("kooperatif"), 5, "Köy kooperatifi")
+	if kasaba_mi():
+		for q in [["okul", "Okullar"], ["saglik", "Sağlık ocakları"]]: ekle.call(hizmet_oran(q[0]) < 0.3, -8, "%s yetmiyor, sıra bekleniyor" % q[1])
+	var vk := vergi_kademe()
+	if bina_var("belediye") and kayit_v.get("vergi", "orta") != "orta" and kayit_v.get("vergi") != null: ekle.call(true, vk["m"], "Vergiler düşük" if int(vk["m"]) > 0 else "Vergiler yüksek")
+	ekle.call(int(sonuc.get("yer", 0)) > 0 and koyluler.size() > int(sonuc.get("yer", 0)) * 1.4, -10, "Evler kalabalık")
+	ekle.call(float(mevsim()["kis"]) > 0.5 and not bina_var("hamam"), -5, "Kış soğuğu (hamam iyi gelir)")
+	ekle.call(hava() == "kuraklik" and not bina_var("kuyu"), -6, "Kuraklık (kuyu yok)"); ekle.call(hava() == "firtina", -3, "Fırtına")
+	var eksik := [["cami", 10, "Cami"], ["kahvehane", 8, "Kahvehane"], ["okul", 8, "Okul"], ["park", 6, "Çocuk parkı"], ["hamam", 6, "Hamam"], ["sifa", 6, "Şifa evi"], ["bakkal", 4, "Bakkal"], ["berber", 3, "Berber"], ["lamba", 2, "Sokak lambası"]].filter(func(e): return not bina_var(e[0]))
+	if kasaba_mi():
+		var koyca := ["Cami", "Şifa evi", "Bakkal", "Berber", "Mezarlık", "Sokak lambası", "Yollar", "Asfalt yollar", "Ev bahçeleri"]
+		for x in l:
+			if x[0] > 0 and koyca.any(func(e): return str(x[1]).begins_with(e)): x[0] = x[0] / 2.0
+		var bek: int = min(30, max(0, int(round(10 * log(max(1.0, nufus_say() / 1500.0)) / log(10.0)))))
+		ekle.call(bek > 0, -bek, "Kalabalık büyüdükçe beklenti artıyor")
+	var top := 0.0
+	for x in l: top += float(x[0])
+	var puan: float = clamp(40 + top, 0, 100)
+	return {"puan": puan, "eksik": eksik, "l": l}
+var _memnun_c := {"t": -99999.0, "p": 60.0}
+func memnun_puan() -> float:
+	var sn := Time.get_ticks_msec()
+	if sn - float(_memnun_c["t"]) > 2000: _memnun_c = {"t": sn, "p": memnuniyet()["puan"]}
+	return _memnun_c["p"]
+func memnun_carpani() -> float:
+	var p := memnun_puan(); return (0.9 if p >= 80 else (1.12 if p < 40 else 1.0)) * (0.92 if bina_var("lise") else 1.0)
+func memnun_ac():
+	var m := memnuniyet(); var liste := panel_ac("Köyün keyfi: %%%d" % int(m["puan"]), "memnun")
+	etiket(liste, "Köylüler mutluysa üretim hızlanır, mutsuzsa yavaşlar.", 22, Color(0.45, 0.38, 0.3))
+	for x in m["l"]: etiket(liste, "%s%s  %s" % ["+" if float(x[0]) > 0 else "", str(x[0]), x[1]], 26, Color(0.2, 0.45, 0.15) if float(x[0]) > 0 else Color(0.7, 0.2, 0.15))
+	if m["eksik"].size() > 0:
+		etiket(liste, "Kurarsan sevinirler:", 26, Color(0.25, 0.17, 0.1))
+		for e in m["eksik"]: etiket(liste, "  %s (+%d)" % [e[2], int(e[1])], 24)
 func isci_eylem(b: Dictionary):
 	var bb: Dictionary = BINA_BILGI.get(b["tip"], {})
 	if b.get("insa") != null: return
@@ -2155,8 +2260,12 @@ func ust_guncelle():
 func saat_guncelle():
 	if ust_saat == null: return
 	var h := oyun_saati(); ust_saat.text = " %s · %02d:%02d" % [mevsim()["ad"], int(h), int(fmod(h, 1.0) * 60)]
+	if ust_keyif and not kayit_v.is_empty() and not VERI.is_empty():
+		var p := memnun_puan(); ust_keyif.text = "%s %%%d" % ["Keyif" , int(p)]
+		ust_keyif.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if p >= 60 else (Color(1, 0.96, 0.88) if p >= 40 else Color(1, 0.55, 0.45)))
 var ust_lv: Label
 var ust_saat: Label
+var ust_keyif: Button
 var ust_cip := {}
 func cip_stil() -> StyleBoxFlat:
 	var s := kutu_stil(Color(0.22, 0.15, 0.09, 0.82), 22); s.content_margin_left = 12; s.content_margin_right = 14; s.content_margin_top = 6; s.content_margin_bottom = 6; return s
@@ -2241,12 +2350,15 @@ func balta_yap() -> Node3D:
 	var s2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.008, 0.04, 0.035); s2.mesh = m2; s2.material_override = _balta_mt[1]; s2.position = Vector3(0, 0.02, 0.12); n.add_child(s2)
 	n.visible = false; return n
 func oduncu_ata():
-	# boştaki (inşaatta olmayan) köylüler işaretli ağaçlara gider
+	# boştaki (inşaatta olmayan, işi olmayan) köylüler işaretli ağaçlara gider — web: k.is olmayanlar
+	var yer: int = max(1, int(sonuc.get("yer", 1))); var bos_oran: float = clamp(float(yer - int(sonuc.get("isciKul", 0))) / yer, 0.0, 1.0)
+	var sinir := int(ceil(koyluler.size() * bos_oran)); var aktif := koyluler.filter(func(k): return k.get("od") != null).size()
 	for k in koyluler:
+		if aktif >= sinir: return
 		if k.get("insaB") != null or k.get("od") != null: continue
 		var i := isaretli_bul(k.gr.position)
 		if i < 0: return
-		agac_rezerve[i] = true; k["od"] = "git"; k["agac"] = i
+		agac_rezerve[i] = true; k["od"] = "git"; k["agac"] = i; aktif += 1
 		var p := karo_poz(i); var yon: Vector3 = k.gr.position - p; yon.y = 0
 		yon = yon.normalized() if yon.length() > 0.01 else Vector3.FORWARD
 		k["odHedef"] = p + yon * 0.4
@@ -2454,6 +2566,7 @@ func _process(dt):
 					else: tasi_basla(b); hayalet_tasi(Vector2i(63, 62)); yerlestir_onay(); print("TASI ", b["x"], ",", b["z"], " karo ", karo_bina.get(62 * WN + 63) == b)
 	if kare == 12 and OS.get_cmdline_user_args().has("--insapanel"): insa_ac()
 	if kare == 12 and OS.get_cmdline_user_args().has("--seviye"): seviye_modal(28, 280)
+	if kare == 12 and OS.get_cmdline_user_args().has("--keyif"): memnun_ac(); print("KEYIF ", memnuniyet()["puan"], " enerji ", enerji_geliri(), " turist ", turist_geliri(), " vergi ", vergi_geliri())
 	if kare == 12 and OS.get_cmdline_user_args().has("--hesap"):
 		var r := hesapla(); print("HESAP yer ", r["yer"], " evYer ", r["evYer"], " isciKul ", r["isciKul"], " hiz ", r["hiz"])
 	if kare == 12 and OS.get_cmdline_user_args().has("--ambar"):

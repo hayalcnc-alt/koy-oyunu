@@ -26,6 +26,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Bahçe evin yanına kurulur (kapı önü olmaz, her eve bir bahçe, açık tarafı eve bakar), ev yıkılınca bahçe yeniden bağlanır; ev avlusundaki sebze tarhı (4 dk'da 1, en çok 2) otomatik toplanır
 - [x] Dört mevsim (2 oyun günü), kışın kar örtüsü/karlı ağaç ve çatılar/yağan kar, güzün sararan yapraklar, bahar-güz yağmuru, güz fırtınası, yaz kuraklığı (kuyu yoksa ekin 1.4x yavaş), kışın açık tarla 1.6x yavaş; mevsim saat çipinde (web mevsim/hava/mevsimAdim)
 - [x] Rehber kartı (hasat, sipariş, hazır ürün, aç hayvan, boş tarla, boş atölye, yeni bina, tarla öner; X ile 3 dk sus, seviyeye kalan tecrübe), seviye atlama penceresi (ödül + yeni açılanlar), İNŞA çekmecesi kategorilerle ve kilit nedenleriyle (web kartEngel: seviye, nüfus şartı, zaten var, tarla sınırı, bahçe sayısı, boş köylü), alet/kereste maliyetleri ambardan
+- [x] Köy keyfi (web memnuniyet: hizmetler, kapasite oranı, lamba/yol/bahçe, bayram, kış/kuraklık/fırtına, kalabalık, vergi), keyif çipi + nedenler paneli, keyfe göre toplama hızı; enerji (güneş/rüzgâr), turist, vergi geliri, belediye kasası ve vergi kademesi seçimi
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -36,7 +37,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
   - Canlı Firebase'de deneme hesabı açmak kullanıcı onayı bekliyor.
 - [ ] Paket adı/imza: Play'deki uygulamanın güncellemesi olarak çıkma
 - [ ] Köylü işleri: köylülerin iş binalarına atanıp gidip gelmesi (k.is), oduncu binası işçilerinin çevredeki ağaçları kesmesi (agacBul), fidan/kıyıda yeni ağaç (kiyiYerBul)
-- [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
+- [ ] Memnuniyette makine işsizliği (tarimDurum), sanayi dumanı (sanayiDenge), çöp, yangın, cenaze yası
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
 - [ ] Olaylar/hikâyeler (kısa ve seyrek), gazete
