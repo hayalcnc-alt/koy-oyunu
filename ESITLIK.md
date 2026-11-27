@@ -24,6 +24,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Ağaca/kayaya dokunup işaretleme; boştaki köylü baltayla 30 sn keser/kırar, ağaç kütüğe döner (90 sn sonra çürür), odunu/taşı yola taşır (+12 odun / +10 taş) — web kesimIsaretle/oduncuAdim
 - [x] Ekim paneli: "Bu tarla" / "Boş tarlaların hepsi", seviyeye göre sıralı ekin listesi (kilitliler görünür), gübre %20 hızlandırır (web ekimAc/ek)
 - [x] Bahçe evin yanına kurulur (kapı önü olmaz, her eve bir bahçe, açık tarafı eve bakar), ev yıkılınca bahçe yeniden bağlanır; ev avlusundaki sebze tarhı (4 dk'da 1, en çok 2) otomatik toplanır
+- [x] Dört mevsim (2 oyun günü), kışın kar örtüsü/karlı ağaç ve çatılar/yağan kar, güzün sararan yapraklar, bahar-güz yağmuru, güz fırtınası, yaz kuraklığı (kuyu yoksa ekin 1.4x yavaş), kışın açık tarla 1.6x yavaş; mevsim saat çipinde (web mevsim/hava/mevsimAdim)
 
 ## Eksik (önem sırasıyla)
 - [ ] Bulut kaydı + web kaydını Godot'ya aktarma (Firebase kayitlar/uid, CV.kod)
@@ -37,7 +38,6 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [ ] Mutluluk (memnuniyet), enerji/turist/vergi gelirleri, belediye kasası
 - [ ] Aşamalar: köy → kasaba → ilçe → şehir (geçiş koşulları, ev modelleri değişimi)
 - [ ] Keşif / kâşif / yeni bölgeler, ada/takımada
-- [ ] Mevsim, hava (yağmur, kar, kuraklık)
 - [ ] Olaylar/hikâyeler (kısa ve seyrek), gazete
 - [ ] Hedefler/rehber, seviye atlama penceresi
 - [ ] Sesler, ayarlar (kalite, ses)

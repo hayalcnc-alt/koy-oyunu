@@ -117,6 +117,7 @@ func web_kaydi_ciz(ad: String):
 	var mt := StandardMaterial3D.new(); mt.roughness = 1.0
 	mt.albedo_texture = load("res://doku/cim.png"); mt.uv1_triplanar = true; mt.uv1_world_triplanar = true; mt.uv1_scale = Vector3.ONE * 0.22
 	var cc := Color.html("#7b9443"); mt.albedo_color = Color(cc.r * 0.84, cc.g * 0.86, cc.b * 0.55); kara.material_override = mt
+	cim_mt = mt; cim_renk = mt.albedo_color
 	# deniz: kara maskesini bulanıklaştır (kıyıya uzaklık), web'deki su shader'ı
 	var img := Image.create(WN, WN, false, Image.FORMAT_RF)
 	var km := PackedFloat32Array(); km.resize(WN * WN)
@@ -696,6 +697,85 @@ var orman_kok: Node3D
 func orman_yenile():
 	if orman_kok: orman_kok.queue_free()
 	web_orman(arazi_t)
+# --- dört mevsim ve hava: web mevsim()/hava()/mevsimAdim — her mevsim 2 oyun günü; kış karlı, güz sararmış
+const MEVSIM := [["İlkbahar", "bahar"], ["Yaz", "yaz"], ["Sonbahar", "guz"], ["Kış", "kis"]]
+var cim_mt: StandardMaterial3D
+var cim_renk := Color.WHITE
+var yaprak_mt := {}   # malzeme -> asıl renk
+func mevsim() -> Dictionary:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--mevsim="):
+			var j := int(a.substr(9)); var w2 := [0.0, 0.0, 0.0, 0.0]; w2[j] = 1.0
+			return {"i": j, "ad": MEVSIM[j][0], "kis": w2[3], "guz": w2[2], "bahar": w2[0]}
+	var t := (simdi_ms() / 1000.0 / GUN_SN_W) / 2.0; var i := int(floorf(t)) % 4; var f: float = t - floorf(t)
+	var g: float = max(0.0, (f - 0.85) / 0.15); var w := [0.0, 0.0, 0.0, 0.0]; w[i] += 1.0 - g; w[(i + 1) % 4] += g
+	return {"i": i, "ad": MEVSIM[i][0], "kis": w[3], "guz": w[2], "bahar": w[0]}
+func gun_no() -> int: return int(floor(((simdi_ms() / 1000.0) + 9 * GUN_SN_W / 24.0) / GUN_SN_W))
+func hava():
+	var m := mevsim(); var saat_no := int(floor(simdi_ms() / 1000.0 / (GUN_SN_W / 24.0)))
+	if int(m["i"]) == 1 and rnd(gun_no(), 31) < 0.5: return "kuraklik"
+	if int(m["i"]) == 2 and rnd(saat_no, 11) < 0.2: return "firtina"
+	return null
+func kuyu_var() -> bool: return bina_var("kuyu")
+var _yagis: MultiMeshInstance3D
+var _yagis_poz := []
+const KAR_N := 700
+func mevsim_adim():
+	var m := mevsim(); var kis: float = m["kis"]; var guz: float = m["guz"]
+	if kayit_v.get("sonMevsim") != m["i"]:
+		if kayit_v.get("sonMevsim") != null:
+			bildir("%s geldi!%s" % [m["ad"], [" Karlar eridi, doğa yeşeriyor.", " Hasat zamanı.", " Yapraklar sararıyor.", " Kar yağıyor; açık tarlalar yavaş büyür, sera kur."][int(m["i"])]])
+		kayit_v["sonMevsim"] = m["i"]
+	var hv = hava()
+	if hv != kayit_v.get("sonHava"):
+		if hv == "kuraklik": bildir("Kuraklık! Bugün yağmur yok, toprak susuz." + (" Neyse ki köyün kuyusu var." if kuyu_var() else " Kuyu kurmazsan tarlalar yavaş büyür."))
+		kayit_v["sonHava"] = hv
+	var gece := gece_oran()
+	if cim_mt:
+		var c := cim_renk.lerp(Color(0.42, 0.44, 0.46) * cim_renk, kis).lerp(Color.html("#e0b070") * cim_renk * 1.6, guz * 0.6)
+		if hv == "kuraklik": c = c.lerp(Color.html("#d8b060") * 0.7, 0.45)
+		cim_mt.albedo_color = c
+		cim_mt.emission_enabled = kis > 0.01; cim_mt.emission = Color.html("#dfe6ec"); cim_mt.emission_energy_multiplier = kis * 0.62 * (1.0 - gece * 0.85)
+	for hx in _malz:
+		if TIPMAP.get(hx, "") == "kiremit":
+			var km: StandardMaterial3D = _malz[hx]
+			if not km.has_meta("kar"): km.set_meta("kar", true)
+			km.emission_enabled = kis > 0.01 or km.emission_enabled; km.emission = Color.html("#dfe6ec"); km.emission_energy_multiplier = kis * 0.35 * (1.0 - gece * 0.85)
+	for mt in yaprak_mt:
+		var a: Color = yaprak_mt[mt]
+		mt.albedo_color = a.lerp(Color.html("#ff9a3c") * 0.8, guz * 0.85).lerp(Color(0.85, 0.87, 0.9), kis * 0.8)
+	var saat_no := int(floor(simdi_ms() / 1000.0 / (GUN_SN_W / 24.0)))
+	yagis_tur = "kar" if kis > 0.5 else ("yagmur" if (hv == "firtina" or ((float(m["bahar"]) > 0.5 or guz > 0.5) and rnd(saat_no, 7) < 0.3)) else "")
+	firtina = hv == "firtina"
+var yagis_tur := ""
+var firtina := false
+func gece_oran() -> float:
+	var h := oyun_saati(); var f := (h - 5.0) / 15.5; var yuk := sin(PI * f)
+	return 1.0 - (smoothstep(-0.18, 0.22, yuk) if (h > 2.5 and h < 22.5) else 0.0)
+func yagis_adim(dt: float):
+	if yagis_tur == "":
+		if _yagis: _yagis.visible = false
+		return
+	if _yagis == null:
+		var q := QuadMesh.new(); q.size = Vector2(0.035, 0.035)
+		var mt := StandardMaterial3D.new(); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mt.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED; mt.billboard_keep_scale = true; mt.cull_mode = BaseMaterial3D.CULL_DISABLED
+		q.material = mt
+		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.mesh = q; mm.instance_count = KAR_N
+		_yagis = MultiMeshInstance3D.new(); _yagis.multimesh = mm; _yagis.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; add_child(_yagis)
+		for k in KAR_N: _yagis_poz.append(Vector3(randf_range(-8, 8), randf() * 7, randf_range(-8, 8)))
+	_yagis.visible = true
+	var yag := yagis_tur == "yagmur"
+	var mt2: StandardMaterial3D = (_yagis.multimesh.mesh as QuadMesh).material
+	mt2.albedo_color = Color(0.72, 0.78, 0.85, 0.7 if firtina else 0.45) if yag else Color(1, 1, 1, 0.85)
+	var sc := Vector3(0.5, 6, 1) if yag else Vector3.ONE; var hiz := (10.0 if firtina else 7.0) if yag else 0.6
+	var tt := Time.get_ticks_msec() / 1000.0
+	for k in KAR_N:
+		var p: Vector3 = _yagis_poz[k]; p.y -= hiz * dt
+		if not yag: p.x += sin(tt + k) * dt * 0.15
+		elif firtina: p.x += dt * 4
+		if p.y < 0: p = Vector3(randf_range(-8, 8), p.y + 7, randf_range(-8, 8))
+		_yagis_poz[k] = p
+		_yagis.multimesh.set_instance_transform(k, Transform3D(Basis().scaled(sc), Vector3(hedef.x + p.x, p.y, hedef.z + p.z)))
 func web_orman(t: Array):
 	orman_kok = Node3D.new(); add_child(orman_kok)
 	# web araziKur ile aynı: t=2 orman karosunda 2-3 ağaç (yarısı çam), t=3 kayalık
@@ -730,6 +810,12 @@ func web_orman(t: Array):
 	for ad in liste:
 		var l: Array = liste[ad]; if l.is_empty(): continue
 		var hi: Mesh = dogal_mesh(ad); var lo: Mesh = az_ucgen(hi)
+		# yaprak malzemeleri (yeşil baskın) mevsimle renk değiştirir
+		for si in hi.get_surface_count():
+			var sm = hi.surface_get_material(si)
+			if sm is StandardMaterial3D:
+				var c: Color = sm.albedo_color
+				if c.g > c.r and c.g > c.b and not yaprak_mt.has(sm): yaprak_mt[sm] = c
 		var gr := {}
 		for tr in l:
 			var k := Vector2i(int(floor((tr.origin.x + YARI) / PARCA)), int(floor((tr.origin.z + YARI) / PARCA)))
@@ -975,7 +1061,7 @@ func arayuz_kur():
 	ust_etiket = Label.new(); ust_etiket.add_theme_font_size_override("font_size", 27); ust_etiket.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); p.add_child(ust_etiket)
 	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 8); ustv.add_child(r2)
 	for k in ["altin", "odun", "tas", "nufus"]: ust_cip[k] = cip_yap(r2, k)
-	var sp := PanelContainer.new(); sp.add_theme_stylebox_override("panel", cip_stil()); sp.set_anchors_preset(Control.PRESET_TOP_RIGHT); sp.offset_left = -170; sp.offset_right = -14; sp.offset_top = 14; cl.add_child(sp)
+	var sp := PanelContainer.new(); sp.add_theme_stylebox_override("panel", cip_stil()); sp.set_anchors_preset(Control.PRESET_TOP_RIGHT); sp.offset_left = -300; sp.offset_right = -14; sp.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sp.offset_top = 14; cl.add_child(sp)
 	var sh := HBoxContainer.new(); sp.add_child(sh); sh.add_child(ikon_yap("saat", 34))
 	ust_saat = Label.new(); ust_saat.add_theme_font_size_override("font_size", 27); ust_saat.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); sh.add_child(ust_saat)
 	ust_guncelle()
@@ -1519,6 +1605,8 @@ func ek(b: Dictionary, tip: String) -> bool:
 	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
 	var gub := 1.0
 	if int(kayit_v.get("env", {}).get("gubre", 0)) >= 1: env_ekle("gubre", -1); gub = 0.8
+	var kis_y := (1.6 if float(mevsim()["kis"]) > 0.5 and not b.get("sera", false) else 1.0) * (1.4 if hava() == "kuraklik" and not kuyu_var() else 1.0)
+	gub *= kis_y
 	var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0 * gub, "gubre": gub < 1.0}
 	ekin_yenile(b); return true
 func ekim_yap(b: Dictionary, tip: String, hepsi: bool):
@@ -1946,7 +2034,7 @@ func ust_guncelle():
 	saat_guncelle()
 func saat_guncelle():
 	if ust_saat == null: return
-	var h := oyun_saati(); ust_saat.text = " %02d:%02d" % [int(h), int(fmod(h, 1.0) * 60)]
+	var h := oyun_saati(); ust_saat.text = " %s · %02d:%02d" % [mevsim()["ad"], int(h), int(fmod(h, 1.0) * 60)]
 var ust_lv: Label
 var ust_saat: Label
 var ust_cip := {}
@@ -2197,7 +2285,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			insaatci_ata(); oduncu_ata(); kutuk_adim(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
@@ -2222,7 +2310,7 @@ func _process(dt):
 			d.rotation.y = lerp_angle(d.rotation.y, atan2(fark.x, fark.z), dt * 4)
 		else:
 			h.h = Vector3(randf_range(-0.55, 0.55), 0.04, randf_range(-0.1, 0.9)); h.bekle = 1.5 + randf() * 4
-	koylu_adim(dt); tarlaci_adim(dt)
+	koylu_adim(dt); tarlaci_adim(dt); yagis_adim(dt)
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
