@@ -206,7 +206,8 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 28)
-	tarlaci_koy(v["b"], 24)
+	call_deferred("oto_topla")
+	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
 	web_orman(t)
 	if ilk_ev != null and hedef_arg == Vector3.ZERO: hedef = ilk_ev
@@ -525,8 +526,8 @@ func tarlaci_koy(bl: Array, n: int):
 		if b["tip"] in ["tarla", "bahce"] and b.get("insa") == null: l.append(b)
 	l.sort_custom(func(a, b): return Vector2(a["x"] - YARI, a["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)) < Vector2(b["x"] - YARI, b["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)))
 	var sap := StandardMaterial3D.new(); sap.albedo_color = Color.html("#7a5532"); var dmr := StandardMaterial3D.new(); dmr.albedo_color = Color.html("#8f9aa3"); dmr.metallic = 0.3
-	for k: int in range(min(n, l.size())):
-		var b: Dictionary = l[k]
+	for k: int in range(min(n, l.size() * 2)):
+		var b: Dictionary = l[k / 2]
 		var kadin: bool = k % 2 == 1
 		var ad: String = ("k" if kadin else "e") + str((k * 3 + 1) % 4)
 		if donem_kip != "" and randf() < 0.3: ad += donem_kip
@@ -1173,6 +1174,20 @@ func ek(b: Dictionary, tip: String):
 	kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
 	var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0}
 	ekin_yenile(b); ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+# web otoTopla: çiftçiler olgun tarlayı biçer, aynı tohumu yeniden eker (tohum parası düşer)
+var _oto_say := 0
+func oto_topla():
+	var ek := 0
+	for b in kayit_v.get("b", []):
+		if b["tip"] != "tarla" or b.get("insa") != null or b.get("otoKapali", false) == true: continue
+		if not b.get("ekin") is Dictionary or ekin_asama(b) != 2: continue
+		var tip: String = b["ekin"]["tip"]; env_ekle(tip, 2); b["ekin"] = null; ek += 1
+		var e: Dictionary = VERI["ekin"].get(tip, {})
+		if not e.is_empty() and float(kayit_v["res"].get("altin", 0)) >= float(e["tohum"]):
+			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - float(e["tohum"])
+			var t := simdi_ms(); b["ekin"] = {"tip": tip, "bas": t, "bit": t + float(e["sure"]) * 1000.0}
+		ekin_yenile(b)
+	if ek > 0: ust_guncelle(); kayit_yaz_koy()
 func hasat(b: Dictionary):
 	if ekin_asama(b) != 2: return
 	env_ekle(b["ekin"]["tip"], 2); b["ekin"] = null
@@ -1340,7 +1355,9 @@ func _process(dt):
 	_isik_say -= dt
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
-		if not kayit_v.is_empty(): insa_adim(1.0)
+		if not kayit_v.is_empty():
+			insa_adim(1.0); _oto_say += 1
+			if _oto_say >= 3: _oto_say = 0; oto_topla()
 		if not kayit_v.is_empty():
 			for b in kayit_v["b"]:
 				if b["tip"] == "tarla" and b.get("ekin") is Dictionary: ekin_yenile(b)
