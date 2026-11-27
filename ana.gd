@@ -8,7 +8,8 @@ const TIPMAP := {"ece3d0": "siva", "e2d4b6": "siva", "4b3222": "ahsap", "8a6241"
 const TRI := {"siva": ["siva", 1.4, 0.95, 1.35], "tas": ["tas", 2.4, 0.92, 1.35], "kaya": ["kaya", 1.8, 0.9, 1.35], "ahsap": ["ahsap", 2.2, 0.82, 1.35], "kiremit": ["kiremit", 3.0, 0.78, 1.5], "saman": ["saman", 2.6, 0.95, 1.35], "toprak": ["toprak", 1.2, 0.98, 0.72], "cim": ["cim", 0.22, 0.96, 1.35], "kum": ["kum", 0.6, 0.97, 1.35], "yaprak": ["yaprak", 2.4, 0.85, 1.25], "metal": ["metal", 2.0, 0.42, 1.1], "kumas": ["kumas", 4.0, 0.95, 1.15], "cam": ["", 1.0, 0.12, 1.35], "su": ["", 1.0, 0.1, 1.35], "duz": ["", 1.0, 0.8, 1.35], "kabuk": ["kabuk", 3.5, 0.92, 1.35]}
 const BOY := {"ev": 1, "gunes": 1, "ruzgar": 1, "maden": 1, "kuyumcu": 1, "sera": 1, "hamam": 2, "sifa": 1, "han": 2, "kahvehane": 2, "bakkal": 1, "berber": 1, "okul": 2, "benzinlik": 2, "bahce": 1, "tarla": 1, "ambar": 2, "oduncu": 1, "ocak": 1, "kumes": 2, "degirmen": 1, "demirci": 1, "esnafodasi": 2, "kooperatif": 2, "bayi": 2, "muhasebe": 1, "dayibasi": 1, "besi": 2, "ahir": 2, "kuyu": 1, "firin": 1, "pazar": 2, "mandira": 1, "agil": 2, "kovan": 1, "elma": 1, "armut": 1, "dokuma": 1, "balikci": 1, "iskele": 1, "asfalt": 1, "yol": 1, "kopru": 1, "cit": 1, "muhtar": 2, "meydan": 3, "park": 2, "cami": 2, "mezarlik2": 2, "mezarlik": 2, "atcilik": 2, "keresteci": 1, "elektrikci": 1, "bobinaj": 1, "torna": 1, "cnc": 2, "hal": 3, "hayiryeri": 3, "liman": 3, "cadir": 1, "apartman": 1, "hastane": 3, "universite": 3, "stadyum": 3, "site": 2, "rezidans": 2, "teras": 1, "lojman": 1, "lamba": 1, "lise": 2, "saglik": 2, "otogar": 2, "fabrika": 2, "karakol": 2, "itfaiye": 2, "imar_konut": 2, "imar_carsi": 2, "imar_sanayi": 2, "fenisleri": 2, "belediye": 2, "kale": 3}
 const KARO := 1.0
-const HAYVAN_TUR := {"ahir": ["hayvan_inek", 2, 1.1, 0.18], "agil": ["hayvan_koyun", 2, 1.1, 0.18], "kumes": ["hayvan_tavuk", 3, 1.2, 0.35]}
+const HAYVAN_TUR := {"ahir": ["hayvan_inek", 2, 1.1, 0.18], "agil": ["hayvan_koyun", 2, 0.296, 0.18], "kumes": ["hayvan_tavuk", 3, 0.203, 0.35]}
+const DIS_MODEL := ["hayvan_koyun", "hayvan_tavuk", "hayvan_inek"]
 var hayvanlar := []
 const WN := 126
 const YARI := 63.0
@@ -657,6 +658,29 @@ func bina_koy_dunya(ad: String, poz: Vector3, rot: int, id := 0):
 	kok.position = poz; kok.rotation.y = rot * PI / 2
 	for m in s.find_children("*", "MeshInstance3D", true, false): m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
+var _birlesik := {}
+func birlestir(s: Node3D):
+	# modeldeki parçaları malzemeye göre tek ağda topla: görünüm aynı, çizim çağrısı az
+	var eski := s.find_children("*", "MeshInstance3D", true, false)
+	if eski.size() < 2: return
+	var gruplar := {}; var mats := {}
+	for mi in eski:
+		var me: Mesh = mi.mesh; if me == null: continue
+		var tr: Transform3D = Transform3D.IDENTITY; var n: Node = mi
+		while n != s and n != null:
+			tr = (n as Node3D).transform * tr; n = n.get_parent()
+		for i in me.get_surface_count():
+			var mt: Material = mi.get_surface_override_material(i)
+			if mt == null: mt = me.surface_get_material(i)
+			var k := mt.get_instance_id() if mt else 0
+			if not gruplar.has(k):
+				var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES); gruplar[k] = st; mats[k] = mt
+			gruplar[k].append_from(me, i, tr)
+	for mi in eski: mi.get_parent().remove_child(mi); mi.free()
+	for k in gruplar:
+		var yeni := MeshInstance3D.new(); yeni.mesh = gruplar[k].commit(); if mats[k]: yeni.material_override = mats[k]
+		s.add_child(yeni)
+
 func zemin_kur():
 	# çim: hafif dalgalı renkli büyük düzlem + toprak yollar
 	var m := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(N * 3, N * 3); m.mesh = pm
@@ -678,6 +702,8 @@ func sahne_yukle(ad: String) -> Node3D:
 		_onbellek[ad] = [doc, st]
 	var c = _onbellek[ad]
 	var sh: Node3D = c[0].generate_scene(c[1])
+	# kullanıcının gönderdiği modeller kendi malzemeleriyle, bozmadan
+	if ad in DIS_MODEL: birlestir(sh); return sh
 	if not ad in ["inek", "cam", "mese", "cali", "kaya"]: duz_golge(sh)
 	renk_uygula(sh)
 	return sh
