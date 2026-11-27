@@ -640,12 +640,11 @@ func web_orman(t: Array):
 			gr[k].append(tr)
 		for k in gr:
 			var p: Array = gr[k]
-			for seviye in 2:
-				var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.mesh = hi if seviye == 0 else lo; mm.instance_count = p.size()
+			# not: Compatibility'de visibility_range parçaları yanlış gizliyordu (ağaçlar kayboldu); tek seviye
+			for seviye in 1:
+				var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.mesh = hi; mm.instance_count = p.size()
 				for j in p.size(): mm.set_instance_transform(j, p[j])
 				var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
-				if seviye == 0: mmi.visibility_range_end = YAKIN; mmi.visibility_range_end_margin = 2.0
-				else: mmi.visibility_range_begin = YAKIN; mmi.visibility_range_begin_margin = 2.0; mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				add_child(mmi)
 
 var bina_dugum := {}  # bina id -> {kok, s, olcek}
