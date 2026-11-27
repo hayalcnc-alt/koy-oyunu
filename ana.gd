@@ -36,6 +36,7 @@ var dokun_arg := Vector2(-1, -1)
 var insa_arg := ""
 var onay_arg := false
 var dugme_arg := false
+var sec_arg := -1
 const GUN_SN := 2880.0
 const SAAT_SN := 120.0
 const GUNDUZ_PAY := 0.8
@@ -51,6 +52,7 @@ func _ready():
 		if a.begins_with("--insa="): insa_arg = a.substr(7)
 		if a.begins_with("--onay"): onay_arg = true
 		if a.begins_with("--dugme"): dugme_arg = true
+		if a.begins_with("--sec="): sec_arg = int(a.substr(6))
 		if a.begins_with("--saat="): saat_arg = float(a.substr(7))
 		if a.begins_with("--kayit="): kayit_adi = a.substr(8)
 		if a.begins_with("--mesafe="): mesafe_arg = float(a.substr(9))
@@ -758,7 +760,7 @@ func arayuz_kur():
 		elif d[0] == "Döndür": bt.pressed.connect(func(): hayalet_rot = (hayalet_rot + 1) % 4; hayalet_tasi(hayalet_karo))
 		else: bt.pressed.connect(yerlestir_onay)
 	# bina bilgi paneli (dokununca alttan açılır)
-	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -620; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
+	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -720; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
 	bilgi_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.97), 26)); bilgi_panel.visible = false; cl.add_child(bilgi_panel)
 	var vb := VBoxContainer.new(); vb.add_theme_constant_override("separation", 12); bilgi_panel.add_child(vb)
 	var ust := HBoxContainer.new(); vb.add_child(ust)
@@ -891,7 +893,7 @@ func env_ekle(k: String, n: int):
 func urun_ad(k: String) -> String: return str(VERI.get("urun", {}).get(k, {}).get("ad", k))
 var eylem_kutu: VBoxContainer
 func eylem_dugme(yazi: String, f: Callable, acik := true):
-	var bt := Button.new(); bt.text = yazi; bt.add_theme_font_size_override("font_size", 28); bt.disabled = not acik; bt.pressed.connect(f); eylem_kutu.add_child(bt)
+	var bt := Button.new(); bt.text = yazi; bt.add_theme_font_size_override("font_size", 25); bt.clip_text = true; bt.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS; bt.custom_minimum_size = Vector2(0, 52); bt.disabled = not acik; bt.pressed.connect(f); eylem_kutu.add_child(bt)
 func ciftlik_eylem(b: Dictionary):
 	for c in eylem_kutu.get_children(): c.queue_free()
 	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
@@ -911,6 +913,8 @@ func ciftlik_eylem(b: Dictionary):
 			eylem_dugme("%s büyüyor · %s kaldı" % [urun_ad(b["ekin"]["tip"]), sure_yazi(int(kalan))], func(): pass, false)
 		else:
 			eylem_dugme("Hasat et (+2 %s)" % urun_ad(b["ekin"]["tip"]), func(): hasat(b))
+	elif VERI.get("tarif", {}).has(b["tip"]):
+		uretim_eylem(b, klv)
 	elif VERI["hayvan"].has(b["tip"]):
 		var H: Dictionary = VERI["hayvan"][b["tip"]]
 		hayvan_hazirla(b)
@@ -923,6 +927,45 @@ func ciftlik_eylem(b: Dictionary):
 		eylem_dugme("%d %s: %d aç, %d üretiyor, %d hazır" % [b["hayvan"].size(), H["ad"], ac, uret, hazir], func(): pass, false)
 		eylem_dugme("Besle (%s: %d var)" % [urun_ad(H["yem"]), yem_var], func(): besle(b), ac > 0 and yem_var > 0)
 		eylem_dugme("Topla (+%d %s)" % [hazir, urun_ad(H["urun"])], func(): hayvan_topla(b), hazir > 0)
+func sahip(k: String) -> float:
+	if k in ["altin", "odun", "tas"]: return float(kayit_v["res"].get(k, 0))
+	return float(kayit_v.get("env", {}).get(k, 0))
+func harca(k: String, n: float):
+	if k in ["altin", "odun", "tas"]: kayit_v["res"][k] = float(kayit_v["res"].get(k, 0)) - n
+	else: env_ekle(k, -int(n))
+func girdi_yazi(g: Dictionary) -> String:
+	var l := []
+	for k in g: l.append("%d %s" % [int(g[k]), {"odun": "odun", "tas": "taş", "altin": "altın"}.get(k, urun_ad(k).to_lower())])
+	return " + ".join(l)
+func uretim_eylem(b: Dictionary, klv: int):
+	# web TARIF: girdileri harca, sıraya koy; süresi dolanı topla (sıra en çok 2+lv)
+	if not b.get("kuyruk") is Array: b["kuyruk"] = []
+	var t := simdi_ms(); var hazir := 0
+	for q in b["kuyruk"]:
+		if float(q["bit"]) <= t: hazir += 1
+	var kmax := 2 + int(b.get("lv", 1))
+	eylem_dugme("Sıra: %d / %d   ·   Hazır: %d" % [b["kuyruk"].size(), kmax, hazir], func(): pass, false)
+	if hazir > 0: eylem_dugme("Topla (%d ürün)" % hazir, func(): uretim_topla(b))
+	for r in VERI["tarif"][b["tip"]]:
+		if int(r.get("lv", 0)) > klv: continue
+		var yeter_ := true
+		for k in r["girdi"]:
+			if sahip(k) < float(r["girdi"][k]): yeter_ = false
+		var rr: Dictionary = r
+		eylem_dugme("%s ← %s · %s" % [urun_ad(r["urun"]), girdi_yazi(r["girdi"]), sure_yazi(int(r["sure"]))], func(): uretim_ekle(b, rr), yeter_ and b["kuyruk"].size() < kmax)
+func uretim_ekle(b: Dictionary, r: Dictionary):
+	for k in r["girdi"]: harca(k, float(r["girdi"][k]))
+	var son := simdi_ms()
+	if b["kuyruk"].size() > 0: son = max(son, float(b["kuyruk"][-1]["bit"]))
+	b["kuyruk"].append({"u": r["urun"], "bas": son, "bit": son + float(r["sure"]) * 1000.0})
+	ust_guncelle(); kayit_yaz_koy(); bina_goster(b)
+func uretim_topla(b: Dictionary):
+	var t := simdi_ms(); var kalan := []
+	for q in b["kuyruk"]:
+		if float(q["bit"]) <= t: env_ekle(q["u"], 1)
+		else: kalan.append(q)
+	b["kuyruk"] = kalan; kayit_yaz_koy(); bina_goster(b)
+
 func sure_yazi(sn: int) -> String:
 	if sn >= 3600: return "%d sa %d dk" % [sn / 3600, (sn % 3600) / 60]
 	if sn >= 60: return "%d dk %d sn" % [sn / 60, sn % 60]
@@ -1109,6 +1152,9 @@ func _process(dt):
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
+	if kare == 12 and sec_arg >= 0:
+		for b in kayit_v["b"]:
+			if int(b["id"]) == sec_arg: bina_goster(b)
 	if kare == 16 and dugme_arg:
 		var d: Array = eylem_kutu.get_children().filter(func(c): return c is Button and not c.disabled)
 		if d.size() > 0: d[0].emit_signal("pressed")
