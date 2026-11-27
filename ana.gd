@@ -731,7 +731,7 @@ func insaat_adim(k: Dictionary, dt: float) -> void:
 		k.ust.rotation.x = 0.1 + max(0.0, -f) * 0.3; k.kR.rotation.x = -2.7 + (f + 1) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.8
 func koylu_adim(dt: float):
 	insa_isci.clear()
-	sahne_adim(dt); gelen_adim(dt)
+	sahne_adim(dt); gelen_adim(dt); yangin_adim(dt)
 	for k in koyluler:
 		if sahne_koylu(k, dt): continue
 		if k.get("insaB") != null:
@@ -1531,6 +1531,12 @@ func ciftlik_eylem(b: Dictionary):
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	isci_eylem(b)
 	if b.get("insa") == null: topla_eylem(b)
+	if yangin_bina() == b:
+		etiket(eylem_kutu, "Bina yanıyor! Üretim durdu.", 26, Color(0.75, 0.15, 0.05))
+		if itfaiye_var(): etiket(eylem_kutu, "İtfaiye yolda…", 24)
+		else: eylem_dugme("Köylülerle söndür · 20 altın", func():
+			if float(kayit_v["res"]["altin"]) < 20: bildir("20 altın lazım"); return
+			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - 20; yangin_sondur("koylu"); ust_guncelle())
 	if b["tip"] == "belediye" and b.get("insa") == null:
 		etiket(eylem_kutu, "Kasa: %d altın · vergi geliri %d/dk · bakım %d/dk" % [int(float(kayit_v.get("kasa", 0) if kayit_v.get("kasa") != null else 0)), int(vergi_geliri() * float(vergi_kademe()["k"])), int(belediye_gider())], 24, Color(0.25, 0.17, 0.1))
 		var vh := HBoxContainer.new(); vh.add_theme_constant_override("separation", 8); eylem_kutu.add_child(vh)
@@ -2038,7 +2044,7 @@ func memnuniyet() -> Dictionary:
 	ekle.call(sayi_tam("yol") + sayi_tam("asfalt") >= 4, 5, "Yollar"); ekle.call(sayi_tam("asfalt") >= 6, 6, "Asfalt yollar")
 	var bah := sayi_tam("bahce"); ekle.call(bah > 0, min(6, bah * 2), "Ev bahçeleri (%d)" % bah)
 	ekle.call(bayram() != "", 10, "Bayram havası"); ekle.call(float(kayit_v.get("olayMutlu", 0) if kayit_v.get("olayMutlu") != null else 0) > simdi_ms(), 6, "Köyde güzel bir olay konuşuluyor")
-	hizmet.call("itfaiye", 5, "İtfaiye"); hizmet.call("karakol", 6, "Polis karakolu"); ekle.call(bina_var("kooperatif"), 5, "Köy kooperatifi")
+	ekle.call(kayit_v.get("yangin") is Dictionary, -12, "Köyde yangın var"); hizmet.call("itfaiye", 5, "İtfaiye"); hizmet.call("karakol", 6, "Polis karakolu"); ekle.call(bina_var("kooperatif"), 5, "Köy kooperatifi")
 	if kasaba_mi():
 		for q in [["okul", "Okullar"], ["saglik", "Sağlık ocakları"]]: ekle.call(hizmet_oran(q[0]) < 0.3, -8, "%s yetmiyor, sıra bekleniyor" % q[1])
 	var vk := vergi_kademe()
@@ -2757,6 +2763,80 @@ func gelen_adim(dt: float):
 				gazete("%s ailesi eşyalarını kamyondan indirip %s yerleşti.%s" % [g["ad"], "köye" if statu_adi() == "Köy" else "buraya", (" Onlarla birlikte %d aile daha geldi." % (int(g["n"]) - 1)) if int(g["n"]) > 1 else ""])
 	elif kamyon_sur(g["k"], dt, 1.4) or float(g["t"]) > 60:
 		g["k"].gr.queue_free(); gelen_k = {}; gelen_bekle = 45.0
+# --- yangın ve itfaiye (web yanginAdim/yanginSondur): seviye 8'den sonra ortalama yarım saatte bir bir bina tutuşur;
+# yanarken üretim durur, keyif −12; itfaiye varsa 15 sn'de söndürür, yoksa köylülerle söndürülür (20 altın)
+const YANMAZ := ["tarla", "yol", "asfalt", "cit", "lamba", "kopru", "bahce", "kuyu", "elma", "armut", "mezarlik", "park", "gunes", "ruzgar", "itfaiye", "cami"]
+var _yangin_z := 0.0
+var _yangin_fx: Node3D
+func bulunma(ad: String) -> String:
+	var u := son_unlu(ad); var ince := "eiöüî".contains(u); var son := ad.right(1).to_lower()
+	var sert := "fsthşçkp".contains(son); var tamlama := ad.contains(" ") and "ıiuü".contains(son)
+	return ad + ("n" if tamlama else "") + ("t" if sert else "d") + ("e" if ince else "a")
+func yangin_bina() -> Variant:
+	var y = kayit_v.get("yangin")
+	if not y is Dictionary: return null
+	for b in kayit_v["b"]:
+		if int(b["id"]) == int(y["id"]): return b
+	return null
+func itfaiye_var() -> bool: return bina_var("itfaiye")
+func yangin_adim(dt: float):
+	if kayit_v.is_empty(): return
+	if not kayit_v.get("yangin") is Dictionary:
+		if _yangin_fx: _yangin_fx.queue_free(); _yangin_fx = null
+		_yangin_z += dt
+		if _yangin_z < 5: return
+		_yangin_z = 0
+		var zorla := "--yangin" in OS.get_cmdline_user_args() and not _yangin_test
+		if not zorla and (klv() < 8 or randf() > 5.0 / (60 * 30)): return
+		_yangin_test = true
+		var l: Array = kayit_v["b"].filter(func(b): return b.get("insa") == null and not b["tip"] in YANMAZ)
+		if l.is_empty(): return
+		var b: Dictionary = l[randi() % l.size()]; kayit_v["yangin"] = {"id": b["id"], "bas": simdi_ms()}; kayit_yaz_koy()
+		var ad: String = BINA_BILGI[b["tip"]]["ad"]
+		bildir(("%s yanıyor! İtfaiye yola çıktı…" if itfaiye_var() else "%s yanıyor! Dokun ve söndür.") % ad)
+		if zorla: hedef = bina_merkez(b); kamera_guncelle()
+		return
+	var b: Variant = yangin_bina()
+	if b == null: kayit_v.erase("yangin"); return
+	if b.get("kuyruk") is Array:
+		for q in b["kuyruk"]: q["bit"] = float(q["bit"]) + dt * 1000; q["bas"] = float(q["bas"]) + dt * 1000  # yanarken üretim durur
+	if _yangin_fx == null: _yangin_fx = yangin_fx_yap(b)
+	if "--yangin" in OS.get_cmdline_user_args(): hedef = bina_merkez(b); kamera_guncelle()
+	if itfaiye_var() and simdi_ms() - float(kayit_v["yangin"]["bas"]) > 15000: yangin_sondur("itfaiye")
+	elif "--sondur" in OS.get_cmdline_user_args() and simdi_ms() - float(kayit_v["yangin"]["bas"]) > 3000: yangin_sondur("koylu")
+func yangin_fx_yap(b: Dictionary) -> Node3D:
+	var kok := Node3D.new(); add_child(kok); kok.position = bina_merkez(b)
+	var boy: float = BOY.get(b["tip"], 1); var tepe := 0.8
+	var d = bina_dugum.get(int(b["id"]))
+	if d != null and is_instance_valid(d["kok"]): tepe = min(2.5, aabb_bul(d["kok"]).end.y)
+	for tur in 2:
+		var p := CPUParticles3D.new(); kok.add_child(p)
+		var q := QuadMesh.new(); q.size = Vector2.ONE * (0.2 if tur == 0 else 0.5); p.mesh = q
+		var mt := StandardMaterial3D.new(); mt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; mt.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mt.vertex_color_use_as_albedo = true; q.material = mt
+		var gt := GradientTexture2D.new(); gt.fill = GradientTexture2D.FILL_RADIAL; gt.fill_from = Vector2(0.5, 0.5); gt.fill_to = Vector2(1.0, 0.5); gt.width = 64; gt.height = 64
+		var gg := Gradient.new(); gg.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)]); gt.gradient = gg; mt.albedo_texture = gt
+		p.amount = 90 if tur == 0 else 50; p.lifetime = 0.8 if tur == 0 else 2.6
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX; p.emission_box_extents = Vector3(0.35 * boy, tepe * 0.22, 0.35 * boy)
+		p.position.y = tepe * 0.78 + (0.35 if tur == 1 else 0.0)
+		p.direction = Vector3.UP; p.spread = 12; p.gravity = Vector3.ZERO
+		p.initial_velocity_min = 0.9 if tur == 0 else 0.5; p.initial_velocity_max = 1.6 if tur == 0 else 0.9
+		var g := Gradient.new()
+		if tur == 0: g.colors = PackedColorArray([Color(1, 0.76, 0.16, 1), Color(1, 0.35, 0.04, 0.9), Color(0.6, 0.1, 0, 0)])
+		else: g.colors = PackedColorArray([Color(0.2, 0.19, 0.18, 0.0), Color(0.24, 0.23, 0.22, 0.85), Color(0.35, 0.33, 0.32, 0)])
+		g.offsets = PackedFloat32Array([0.0, 0.4, 1.0]); p.color_ramp = g
+		var c := Curve.new(); c.add_point(Vector2(0, 0.6)); c.add_point(Vector2(1, 1.0 if tur == 1 else 0.2)); p.scale_amount_curve = c
+	var isik := OmniLight3D.new(); isik.light_color = Color(1, 0.5, 0.15); isik.light_energy = 0.9; isik.omni_range = 1.8; isik.position.y = tepe; kok.add_child(isik)
+	return kok
+func yangin_sondur(kim: String):
+	var b: Variant = yangin_bina(); kayit_v.erase("yangin")
+	if _yangin_fx: _yangin_fx.queue_free(); _yangin_fx = null
+	if b == null: return
+	var ad: String = BINA_BILGI[b["tip"]]["ad"]; kayit_yaz_koy()
+	bildir(("İtfaiye geldi, %s yangınını söndürdü!" if kim == "itfaiye" else "Köylüler kova kova su taşıdı, %s yangını söndü.") % ad)
+	gazete(("%s çıkan yangını itfaiye kısa sürede söndürdü." if kim == "itfaiye" else "%s yangın çıktı, köylüler el birliğiyle söndürdü.") % bulunma(ad))
+	if secili_b == b and bilgi_panel.visible: bina_goster(b)
+var _yangin_test := false
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
