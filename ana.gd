@@ -614,7 +614,12 @@ func koylu_adim(dt: float):
 		var sl := sin(k.faz) * 0.5
 		k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8
 
+var orman_kok: Node3D
+func orman_yenile():
+	if orman_kok: orman_kok.queue_free()
+	web_orman(arazi_t)
 func web_orman(t: Array):
+	orman_kok = Node3D.new(); add_child(orman_kok)
 	# web araziKur ile aynı: t=2 orman karosunda 2-3 ağaç (yarısı çam), t=3 kayalık
 	var liste := {"cam": [], "mese": [], "kaya": []}
 	for z in WN:
@@ -659,7 +664,7 @@ func web_orman(t: Array):
 				var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.mesh = hi; mm.instance_count = p.size()
 				for j in p.size(): mm.set_instance_transform(j, p[j])
 				var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
-				add_child(mmi)
+				orman_kok.add_child(mmi)
 
 var bina_dugum := {}  # bina id -> {kok, s, olcek}
 func bina_koy_dunya(ad: String, poz: Vector3, rot: int, id := 0):
@@ -1003,13 +1008,53 @@ func yer_uygun(x: int, z: int, bx: int) -> bool:
 		if t < 1 or t > 3: return false
 		if db != null and not db["tip"] in ["yol", "asfalt"]: return false
 		return ek_bul(x, z, "lamba") == null
+	# web uygun(): çayır, orman (temizlenir +3 odun), kayalık (+2 taş); su ve dağ olmaz; dere/deniz/dağ kenarı şartları
 	for dz in bx:
 		for dx in bx:
 			var xx := x + dx; var zz := z + dz
 			if xx < 0 or zz < 0 or xx >= WN or zz >= WN: return false
-			if int(arazi_t[zz * WN + xx]) != (4 if secili_tip == "kopru" else 1): return false
-			if karo_bina.has(zz * WN + xx): return false
+			var i := zz * WN + xx
+			if not karo_acik(i): return false
+			if karo_bina.has(i): return false
+			var t := int(arazi_t[i])
+			if secili_tip == "kopru":
+				if t != 4: return false
+				continue
+			if t == 0 or t == 4 or t == 5: return false
+	var bb: Dictionary = BINA_BILGI.get(secili_tip, {})
+	if bb.get("su", false) or bb.get("deniz", false):
+		var var_ := false
+		for dz in range(-1, bx + 1):
+			for dx in range(-1, bx + 1):
+				if (dx >= 0 and dx < bx and dz >= 0 and dz < bx) or (abs(dx - (bx - 1) / 2.0) > bx / 2.0 and abs(dz - (bx - 1) / 2.0) > bx / 2.0): continue
+				var xx := x + dx; var zz := z + dz
+				var tt := 0 if (xx < 0 or zz < 0 or xx >= WN or zz >= WN) else int(arazi_t[zz * WN + xx])
+				if tt == 0 or (bb.get("su", false) and tt == 4): var_ = true
+		if not var_: return false
+	if bb.get("dag", false) and dag_yonu(x, z) < 0: return false
 	return true
+const YON4 := [[0, 1], [1, 0], [0, -1], [-1, 0]]
+func dag_yonu(x: int, z: int) -> int:
+	for r in 4:
+		var xx: int = x + YON4[r][0]; var zz: int = z + YON4[r][1]
+		if xx >= 0 and zz >= 0 and xx < WN and zz < WN and int(arazi_t[zz * WN + xx]) == 5: return r
+	return -1
+func su_yonu(x: int, z: int, deniz: bool) -> int:
+	for r in 4:
+		var xx: int = x + YON4[r][0]; var zz: int = z + YON4[r][1]
+		var tt := 0 if (xx < 0 or zz < 0 or xx >= WN or zz >= WN) else int(arazi_t[zz * WN + xx])
+		if tt == 0 or (not deniz and tt == 4): return r
+	return 0
+func temizle_karolar(x: int, z: int, bx: int):
+	# web: ağaç/kayalar temizlenir, odun/taş gelir, karo çayır olur
+	var degisti := false
+	for dz in bx:
+		for dx in bx:
+			var i := (z + dz) * WN + x + dx; var t := int(arazi_t[i])
+			if t == 2: kayit_v["res"]["odun"] = float(kayit_v["res"]["odun"]) + 3
+			if t == 3: kayit_v["res"]["tas"] = float(kayit_v["res"]["tas"]) + 2
+			if t == 2 or t == 3: arazi_t[i] = 1; degisti = true
+	if degisti: orman_yenile()
 
 func hayalet_tasi(k: Vector2i):
 	var bx: int = BOY.get(secili_tip, 1)
@@ -1032,6 +1077,10 @@ func yerlestir_onay():
 	for kk in bb.get("cost", {}): res[kk] = float(res[kk]) - float(bb["cost"][kk])
 	var yid := 1
 	for b in kayit_v["b"]: yid = max(yid, int(b["id"]) + 1)
+	if not secili_tip in ["cit", "lamba"] and not secili_tip in YOL_TIP:
+		temizle_karolar(hayalet_karo.x, hayalet_karo.y, bx)
+		if bb.get("su", false) or bb.get("deniz", false): hayalet_rot = su_yonu(hayalet_karo.x, hayalet_karo.y, bb.get("deniz", false))
+		elif bb.get("dag", false) and dag_yonu(hayalet_karo.x, hayalet_karo.y) >= 0: hayalet_rot = (dag_yonu(hayalet_karo.x, hayalet_karo.y) + 2) % 4
 	var yeni := {"id": yid, "tip": secili_tip, "x": hayalet_karo.x, "z": hayalet_karo.y, "rot": hayalet_rot, "lv": 1, "insa": {"t": 0.0, "top": float(bb.get("sure", 5)), "hedef": 1}}
 	if secili_tip in ["cit", "lamba"]:
 		yeni["insa"] = null; kayit_v["b"].append(yeni)
