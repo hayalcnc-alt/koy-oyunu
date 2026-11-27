@@ -76,7 +76,7 @@ func _ready():
 func cevre_kur():
 	# web oyunundaki ışık: ACES ton eşleme, sıcak güneş, gök/toprak yarım küre ışığı
 	var g := DirectionalLight3D.new(); gunes = g; g.rotation_degrees = Vector3(-50, 35, 0); g.light_energy = 0.8; g.light_color = Color.html("#ffe6c4")
-	g.shadow_enabled = true; g.directional_shadow_max_distance = 40; g.shadow_blur = 1.5; add_child(g)
+	g.shadow_enabled = true; g.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS; g.directional_shadow_max_distance = 30; g.shadow_blur = 1.5; add_child(g)
 	var ortam := WorldEnvironment.new(); var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR; e.background_color = Color.html("#d3e1e6")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR; e.ambient_light_color = Color.html("#a9ad9f"); e.ambient_light_energy = 0.24
@@ -564,11 +564,25 @@ func web_orman(t: Array):
 					var sc := (0.8 if n > 1 else 1.25) * (0.8 + rnd(i, 30 + k2) * 0.5)
 					var bz := Basis.from_euler(Vector3(rnd(i, 41 + k2) * 0.5, rnd(i, 42 + k2) * 6, 0)).scaled(Vector3(sc, sc * 0.75, sc))
 					liste["kaya"].append(Transform3D(bz, Vector3(px + (rnd(i, 10 + k2) - 0.5) * 0.5, 0.05 * sc, pz + (rnd(i, 20 + k2) - 0.5) * 0.5)))
+	# telefon için: harita parçalara bölünür (görünmeyen parça çizilmez), uzaktakiler az üçgenli ağaçla
+	const PARCA := 14; const YAKIN := 16.0
 	for ad in liste:
 		var l: Array = liste[ad]; if l.is_empty(): continue
-		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.mesh = dogal_mesh(ad); mm.instance_count = l.size()
-		for j in l.size(): mm.set_instance_transform(j, l[j])
-		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; add_child(mmi)
+		var hi: Mesh = dogal_mesh(ad); var lo: Mesh = az_ucgen(hi)
+		var gr := {}
+		for tr in l:
+			var k := Vector2i(int(floor((tr.origin.x + YARI) / PARCA)), int(floor((tr.origin.z + YARI) / PARCA)))
+			if not gr.has(k): gr[k] = []
+			gr[k].append(tr)
+		for k in gr:
+			var p: Array = gr[k]
+			for seviye in 2:
+				var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.mesh = hi if seviye == 0 else lo; mm.instance_count = p.size()
+				for j in p.size(): mm.set_instance_transform(j, p[j])
+				var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
+				if seviye == 0: mmi.visibility_range_end = YAKIN; mmi.visibility_range_end_margin = 2.0
+				else: mmi.visibility_range_begin = YAKIN; mmi.visibility_range_begin_margin = 2.0; mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				add_child(mmi)
 
 var bina_dugum := {}  # bina id -> {kok, s, olcek}
 func bina_koy_dunya(ad: String, poz: Vector3, rot: int, id := 0):
@@ -678,6 +692,20 @@ func bina_koy(ad: String, x: int, z: int, boy: int, rot: int):
 	kok.position = Vector3(x + boy / 2.0, 0, z + boy / 2.0); kok.rotation.y = rot * PI / 2
 	for m in s.find_children("*", "MeshInstance3D", true, false): m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
+func az_ucgen(me: Mesh) -> Mesh:
+	# Godot'nun LOD üreticisiyle sadeleştirilmiş kopya (uzak ağaçlar için); olmazsa aynısı
+	var im := ImporterMesh.new()
+	for i in me.get_surface_count():
+		var ar: Array = me.surface_get_arrays(i)
+		if ar[Mesh.ARRAY_INDEX] == null: return me
+		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, ar, [], {}, me.surface_get_material(i))
+	im.generate_lods(60, 25, [])
+	var cik := ArrayMesh.new()
+	for i in im.get_surface_count():
+		var ar: Array = im.get_surface_arrays(i); var n := im.get_surface_lod_count(i)
+		if n > 0: ar[Mesh.ARRAY_INDEX] = im.get_surface_lod_indices(i, min(n - 1, 1))
+		cik.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, ar); cik.surface_set_material(i, im.get_surface_material(i))
+	return cik
 func dogal_mesh(ad: String) -> Mesh:
 	# GLB'deki tek nesnenin ağını al, malzeme adındaki rengi yüzeylere işle (MultiMesh için)
 	var sh := sahne_yukle(ad)
@@ -1273,6 +1301,17 @@ func _process(dt):
 		print("DUGME env=", kayit_v.get("env", {}).get("misir"), " havuc=", kayit_v.get("env", {}).get("havuc"))
 	if kare == 14 and onay_arg:
 		var once: int = kayit_v["b"].size(); yerlestir_onay(); print("INSA SONUC ", once, " -> ", kayit_v["b"].size(), " kayit=", FileAccess.file_exists("user://koy.json"))
+	if kare == 19 and OS.get_cmdline_user_args().has("--olc"):
+		var l := []
+		for n in find_children("*", "GeometryInstance3D", true, false):
+			var tri := 0
+			if n is MeshInstance3D and n.mesh: tri = n.mesh.get_faces().size() / 3
+			elif n is MultiMeshInstance3D and n.multimesh and n.multimesh.mesh: tri = n.multimesh.mesh.get_faces().size() / 3 * n.multimesh.instance_count
+			l.append([tri, str(n.get_path()).right(60)])
+		l.sort_custom(func(a, b): return a[0] > b[0])
+		var top := 0; for x in l: top += x[0]
+		print("TOPLAM ", top, " adet ", l.size()); for x in l.slice(0, 12): print(x)
+		print("OLC dugum=", Performance.get_monitor(Performance.OBJECT_NODE_COUNT), " nesne=", Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), " cizim=", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), " ucgen=", Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), " fps=", Engine.get_frames_per_second())
 	if ekran_yolu != "" and kare == 20:
 		get_viewport().get_texture().get_image().save_png(ekran_yolu); get_tree().quit()
 
