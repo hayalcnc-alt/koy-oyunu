@@ -215,7 +215,7 @@ func web_kaydi_ciz(ad: String):
 	hale_kur()
 	koylu_koy(serit, 0)
 	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("hasar_ciz"); call_deferred("mezar_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
-	tarlaci_koy(v["b"], 32)
+	tarlaci_koy(v["b"], 48)
 	dag_kur(t)
 	web_orman(t)
 	if ilk_ev != null and hedef_arg == Vector3.ZERO: hedef = ilk_ev
@@ -608,14 +608,21 @@ func is_adim(k: Dictionary, dt: float):
 		for u in [k.bL, k.bR, k.kL, k.kR]: u.rotation.x = lerp(u.rotation.x, 0.0, dt * 6)
 # web'deki gibi tarlada çapa yapan köylüler: eğilir, çapayı kaldırıp vurur, ara ara yer değiştirir
 var tarlacilar := []
+var _tarlaci_merkez := Vector3(1e9, 0, 0)
+func tarlaci_yenile():
+	# kamera başka tarlalara gidince çapa yapan köylüler de oraya geçer (yalnız kameraya yakın tarlalar canlandırılır)
+	if Vector2(hedef.x - _tarlaci_merkez.x, hedef.z - _tarlaci_merkez.z).length() < 8 or kayit_v.is_empty(): return
+	for k in tarlacilar: k.gr.queue_free()
+	tarlacilar.clear(); tarlaci_koy(kayit_v["b"], 48); cubuk_guncelle()
 func tarlaci_koy(bl: Array, n: int):
+	_tarlaci_merkez = hedef
 	var l := []
 	for b in bl:
 		if b["tip"] in ["tarla", "bahce"] and b.get("insa") == null: l.append(b)
 	l.sort_custom(func(a, b): return Vector2(a["x"] - YARI, a["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)) < Vector2(b["x"] - YARI, b["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)))
 	var sap := StandardMaterial3D.new(); sap.albedo_color = Color.html("#7a5532"); var dmr := StandardMaterial3D.new(); dmr.albedo_color = Color.html("#8f9aa3"); dmr.metallic = 0.3
-	for k: int in range(min(n, l.size() * 2)):
-		var b: Dictionary = l[k / 2]
+	for k: int in range(min(n, l.size() * 3)):
+		var b: Dictionary = l[k / 3]
 		var kadin: bool = k % 2 == 1
 		var ad: String = ("k" if kadin else "e") + str((k * 3 + 1) % 4)
 		if donem_kip != "" and randf() < 0.3: ad += donem_kip
@@ -627,7 +634,8 @@ func tarlaci_koy(bl: Array, n: int):
 		add_child(ins.gr); ins["m"] = mrk
 		ins.gr.position = mrk + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)); ins.gr.rotation.y = randf() * TAU
 		ins["faz"] = randf() * TAU; ins["hiz"] = randf_range(2.6, 3.4); ins["sure"] = randf_range(4, 9); ins["hedef"] = ins.gr.position
-		if k % 2 == 0 and b["tip"] == "tarla": ins["cubuk"] = cubuk_yap(ins.gr); ins["b"] = b
+		ins["b"] = b
+		if k % 3 == 0 and b["tip"] == "tarla": ins["cubuk"] = cubuk_yap(ins.gr)
 		tarlacilar.append(ins)
 # web'deki gibi çalışanın başında iş çubuğu (ekinin büyümesi)
 const CUBUK_W := 0.26
@@ -856,8 +864,32 @@ func yagis_adim(dt: float):
 		if p.y < 0: p = Vector3(randf_range(-8, 8), p.y + 7, randf_range(-8, 8))
 		_yagis_poz[k] = p
 		_yagis.multimesh.set_instance_transform(k, Transform3D(Basis().scaled(sc), Vector3(hedef.x + p.x, p.y, hedef.z + p.z)))
+const TUTAM_RENK := [Color("#6f8f35"), Color("#7e9a3e"), Color("#8ea248"), Color("#668631")]
+const CICEK_RENK := [Color("#f2efe6"), Color("#e6c74a"), Color("#b8485a"), Color("#8a6fb0")]
+const CALI_RENK := [Color("#4a6a2c"), Color("#56782f")]
+var _cim_mesh: Array = []
+func cim_meshleri() -> Array:
+	if not _cim_mesh.is_empty(): return _cim_mesh
+	# web cimTutamGeo: dokuz ince yaprak
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 9:
+		var a := i / 9.0 * TAU + i * 1.7; var r := 0.015 + (i % 3) * 0.018
+		var x := cos(a) * r; var z := sin(a) * r; var h := 0.08 + ((i * 37) % 5) * 0.014; var w := 0.011
+		var ta := a + PI / 2; var dx := cos(ta) * w; var dz := sin(ta) * w; var lx := cos(a) * 0.04; var lz := sin(a) * 0.04
+		for v in [Vector3(x - dx, 0, z - dz), Vector3(x + dx, 0, z + dz), Vector3(x + lx, h, z + lz)]: st.set_normal(Vector3.UP); st.add_vertex(v)
+	var tut := st.commit()
+	var cic := SphereMesh.new(); cic.radius = 0.02; cic.height = 0.04; cic.radial_segments = 6; cic.rings = 3
+	var cal := SphereMesh.new(); cal.radius = 0.13; cal.height = 0.22; cal.radial_segments = 8; cal.rings = 4
+	for m in [tut, cic, cal]:
+		var mt := StandardMaterial3D.new(); mt.vertex_color_use_as_albedo = true; mt.roughness = 0.95
+		if m == tut: mt.cull_mode = BaseMaterial3D.CULL_DISABLED
+		if m == cal: yaprak_mt[mt] = Color.WHITE  # çalılar mevsimle sararır/karlanır
+		if m is ArrayMesh: m.surface_set_material(0, mt)
+		else: m.set_material(mt)
+	_cim_mesh = [tut, cic, cal]; return _cim_mesh
+var cim_ekle: Array = []
 func web_orman(t: Array):
-	orman_kok = Node3D.new(); add_child(orman_kok)
+	orman_kok = Node3D.new(); add_child(orman_kok); cim_ekle = []
 	# web araziKur ile aynı: t=2 orman karosunda 2-3 ağaç (yarısı çam), t=3 kayalık
 	var liste := {"cam": [], "mese": [], "kaya": []}
 	for z in WN:
@@ -879,6 +911,17 @@ func web_orman(t: Array):
 				elif rnd(i, 620) < 0.35:
 					var sc := 0.9 + rnd(i, 621) * 1.1; var ox := (rnd(i, 622) - 0.5) * 0.6; var oz := (rnd(i, 623) - 0.5) * 0.6
 					liste["kaya"].append(Transform3D(Basis.from_euler(Vector3(rnd(i, 624) * 0.6, rnd(i, 625) * 6, 0)).scaled(Vector3(sc, sc * 0.7, sc)), Vector3(px + ox, yerY(px + ox, pz + oz) + 0.02, pz + oz)))
+			elif k == 1 and not karo_bina.has(i) and not yol_serit.has(i):
+				# web araziKur: çimende ot tutamları, ara sıra kır çiçeği ve koyu çalı
+				for k2 in 3:
+					if rnd(i, 100 + k2) < 0.2: continue
+					var s := 0.8 + rnd(i, 110 + k2) * 0.7
+					cim_ekle.append([Transform3D(Basis(Vector3.UP, rnd(i, 120 + k2) * TAU).scaled(Vector3.ONE * s), Vector3(px + (rnd(i, 130 + k2) - 0.5) * 0.9, 0, pz + (rnd(i, 140 + k2) - 0.5) * 0.9)), TUTAM_RENK[k2 % 4], 0])
+				if rnd(i, 70) < 0.14:
+					for k2 in 3: cim_ekle.append([Transform3D(Basis(), Vector3(px + (rnd(i, 80 + k2) - 0.5) * 0.8, 0.07, pz + (rnd(i, 90 + k2) - 0.5) * 0.8)), CICEK_RENK[int(floor(rnd(i, 95 + k2) * 4))], 1])
+				if rnd(i, 71) < 0.1:
+					var s := 0.8 + rnd(i, 72) * 0.6
+					cim_ekle.append([Transform3D(Basis().scaled(Vector3(s, s * 0.85, s)), Vector3(px + (rnd(i, 73) - 0.5) * 0.6, 0.06, pz + (rnd(i, 74) - 0.5) * 0.6)), CALI_RENK[int(floor(rnd(i, 75) * 2))], 2])
 			elif k == 3:
 				var n := 1 + int(floor(rnd(i, 5) * 2.5))
 				for k2 in n:
@@ -909,6 +952,18 @@ func web_orman(t: Array):
 				for j in p.size(): mm.set_instance_transform(j, p[j])
 				var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
 				orman_kok.add_child(mmi)
+	var cm := cim_meshleri(); var cgr := {}
+	for e in cim_ekle:
+		var tr: Transform3D = e[0]; var key := Vector3i(int(floor((tr.origin.x + YARI) / PARCA)), int(floor((tr.origin.z + YARI) / PARCA)), int(e[2]))
+		if not cgr.has(key): cgr[key] = []
+		cgr[key].append(e)
+	for key in cgr:
+		var p: Array = cgr[key]
+		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = cm[key.z]; mm.instance_count = p.size()
+		for j in p.size(): mm.set_instance_transform(j, p[j][0]); mm.set_instance_color(j, p[j][1])
+		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if key.z != 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		orman_kok.add_child(mmi)
+	cim_ekle = []
 
 var bina_dugum := {}  # bina id -> {kok, s, olcek}
 func bina_koy_dunya(ad: String, poz: Vector3, rot: int, id := 0):
@@ -3934,7 +3989,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); kayip_hayvan_adim(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim()
 			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
