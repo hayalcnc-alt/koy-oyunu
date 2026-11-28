@@ -1342,6 +1342,7 @@ func inek_koy(n: int):
 
 var ust_etiket: Label
 var bilgi_panel: PanelContainer
+var bilgi_kaydir: ScrollContainer
 var bilgi_baslik: Label
 var bilgi_yazi: Label
 var BINA_BILGI := {}
@@ -1430,14 +1431,17 @@ func arayuz_kur():
 		elif d[0] == "Döndür": bt.pressed.connect(func(): hayalet_rot = (hayalet_rot + 1) % 4; hayalet_tasi(hayalet_karo))
 		else: bt.pressed.connect(yerlestir_onay)
 	# bina bilgi paneli (dokununca alttan açılır)
-	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -720; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
+	bilgi_panel = PanelContainer.new(); bilgi_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE); bilgi_panel.offset_top = -720; bilgi_panel.offset_bottom = -170; bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16; bilgi_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bilgi_panel.add_theme_stylebox_override("panel", kutu_stil(Color(1.0, 0.97, 0.9, 0.97), 26)); bilgi_panel.visible = false; cl.add_child(bilgi_panel)
 	var vb := VBoxContainer.new(); vb.add_theme_constant_override("separation", 12); bilgi_panel.add_child(vb)
 	var ust := HBoxContainer.new(); vb.add_child(ust)
 	bilgi_baslik = Label.new(); bilgi_baslik.add_theme_font_size_override("font_size", 40); bilgi_baslik.add_theme_color_override("font_color", Color(0.25, 0.17, 0.1)); bilgi_baslik.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ust.add_child(bilgi_baslik)
 	var kapat := Button.new(); kapat.text = " X "; kapat.add_theme_font_size_override("font_size", 32); kapat.pressed.connect(func(): bilgi_panel.visible = false); ust.add_child(kapat)
-	bilgi_yazi = Label.new(); bilgi_yazi.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; bilgi_yazi.add_theme_font_size_override("font_size", 28); bilgi_yazi.add_theme_color_override("font_color", Color(0.3, 0.24, 0.18)); vb.add_child(bilgi_yazi)
-	eylem_kutu = VBoxContainer.new(); eylem_kutu.add_theme_constant_override("separation", 8); vb.add_child(eylem_kutu)
+	# uzun içerik (muhtarlık, belediye…) kaydırılır; panel içerik kadar büyür, en çok ekranın %55'i
+	bilgi_kaydir = ScrollContainer.new(); bilgi_kaydir.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; vb.add_child(bilgi_kaydir)
+	var ic := VBoxContainer.new(); ic.add_theme_constant_override("separation", 12); ic.size_flags_horizontal = Control.SIZE_EXPAND_FILL; bilgi_kaydir.add_child(ic)
+	bilgi_yazi = Label.new(); bilgi_yazi.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; bilgi_yazi.add_theme_font_size_override("font_size", 28); bilgi_yazi.add_theme_color_override("font_color", Color(0.3, 0.24, 0.18)); ic.add_child(bilgi_yazi)
+	eylem_kutu = VBoxContainer.new(); eylem_kutu.add_theme_constant_override("separation", 8); ic.add_child(eylem_kutu)
 
 # --- İNŞA: liste → yerleştirme önizlemesi → onay; kaynak düşülür, köy kaydedilir
 var insa_panel: PanelContainer
@@ -2404,6 +2408,87 @@ func memnun_ac():
 # --- dayıbaşı (web dayiAdim/dayiPlan/dayiSec/dayiPanel): olgun tarlaları biçer, boşlara ekin eker, gerekirse ağaç/kaya işaretler; tarla başına yevmiye
 const YEVMIYE := 2
 var _dayi_z := 0
+# --- köylü birikimi (web koyluKazanc/aileArabaAl): çalışan köylü para biriktirir; esnaf bisiklet→motor→araba, çiftçi at→at arabası→saban/pulluk→traktör→biçerdöver alır
+const CIFTCI_IS := ["oduncu", "maden", "ocak", "tarla", "ahir", "agil", "kumes", "kovan", "atcilik", "balikci", "iskele", "keresteci", "bahce", "elma", "armut"]
+const KOYLU_AT_FIYAT := 60
+const KOYLU_ARABA_FIYAT := 110
+const KOYLU_TRAKTOR_FIYAT := 260
+const KOYLU_BICER_FIYAT := 450
+const KOYLU_SABAN_FIYAT := 50
+const KOYLU_PULLUK_FIYAT := 120
+func kp_l() -> Array:
+	if not kayit_v.get("kp") is Array: kayit_v["kp"] = []
+	var l: Array = kayit_v["kp"]
+	while l.size() < koyluler.size(): l.append({"para": 0.0, "at": false})
+	for i in l.size():
+		if not l[i] is Dictionary: l[i] = {"para": 0.0, "at": false}
+	return l
+func kp_say(f: Callable) -> int: return kp_l().filter(func(x): return f.call(x)).size()
+func koylu_kazanc(a: float):
+	if koyluler.is_empty(): return
+	var kp := kp_l(); var ciftlik := bina_var("atcilik"); var esnaf_oda := bina_var("esnafodasi"); var ind := 0.8 if esnaf_oda else 1.0
+	var tarla_n := sayi_tam("tarla"); var bayi := bina_var("bayi"); var benzin := bina_var("benzinlik")
+	for i in koyluler.size():
+		var k: Dictionary = koyluler[i]; var x: Dictionary = kp[i]; var isb = k.get("isB")
+		var calisiyor: bool = isb != null and (k.get("isD") == "is" or k.get("od") in ["kes", "tasi"])
+		if calisiyor: x["para"] = float(x["para"]) + a / SAAT_SN * (2.4 if x.get("bicer") else (1.8 if x.get("traktor") else (1.4 if x.get("araba") else 1.0))) * (1.3 if esnaf_oda and not isb["tip"] in CIFTCI_IS else 1.0)
+		if x.get("bicer") and tarla_n > 0: x["para"] = float(x["para"]) + a / SAAT_SN * 0.3
+		var esnaf: bool = isb != null and not isb["tip"] in CIFTCI_IS and not x.get("at") and not x.get("araba") and not x.get("traktor")
+		var p := float(x["para"])
+		if esnaf and x.get("binek") == null and not x.get("oto") and p >= 40 * ind and kp_say(func(q): return q.get("binek") == "bisiklet") < 12:
+			x["binek"] = "bisiklet"; x["para"] = p - 40 * ind; bildir("Bir esnaf kendine bisiklet aldı!")
+		elif esnaf and x.get("binek") == "bisiklet" and p >= 150 * ind and bayi and benzin and kp_say(func(q): return q.get("binek") == "motor") < 8:
+			x["binek"] = "motor"; x["para"] = p - 150 * ind; bildir("Bir köylü bisikletini sattı, motosiklet aldı!")
+		elif esnaf and x.get("binek") == "motor" and p >= 320 * ind and benzin and sayi_tam("asfalt") >= 4 and kp_say(func(q): return q.get("oto")) < 8:
+			x.erase("binek"); x["oto"] = true; x["para"] = p - 320 * ind; bildir("Bir esnaf motorunu sattı, araba aldı!")
+		elif ciftlik and not x.get("at") and x.get("binek") == null and not x.get("oto") and not aile_at_var(i) and p >= KOYLU_AT_FIYAT and kp_say(func(q): return q.get("at")) < 10:
+			x["at"] = true; x["para"] = p - KOYLU_AT_FIYAT; bildir("Bir köylü biriktirdiği parayla kendine at aldı!")
+		elif x.get("traktor") and not x.get("bicer") and p >= KOYLU_BICER_FIYAT and bayi and benzin and tarla_n >= 4 and kp_say(func(q): return q.get("bicer")) < min(2, tarla_n / 8):
+			x["bicer"] = true; x["para"] = p - KOYLU_BICER_FIYAT; bildir("Bir çiftçi biçerdöver aldı! Olgun tarlaları biçecek."); gazete("Köye ilk biçerdöver geldi.")
+		elif x.get("araba") and not x.get("traktor") and aile_alet(i) >= 2 and p >= KOYLU_TRAKTOR_FIYAT and bayi and benzin and kp_say(func(q): return q.get("traktor")) < min(5, tarla_n / 4):
+			x["traktor"] = true; x["at"] = false; x["araba"] = false; x["para"] = p - KOYLU_TRAKTOR_FIYAT + 40; bildir("Bir çiftçi at arabasını sattı, traktör aldı!"); gazete("Köyde bir aile traktör sahibi oldu.")
+	aile_araba_al(ciftlik)
+	if "--kp" in OS.get_cmdline_user_args() and Engine.get_process_frames() % 50 == 0:
+		var top := 0.0
+		for x in kp: top += float(x["para"])
+		print("KP toplam ", int(top), " bisiklet ", kp_say(func(q): return q.get("binek") == "bisiklet"), " at ", kp_say(func(q): return q.get("at")), " araba ", kp_say(func(q): return q.get("araba")), " traktor ", kp_say(func(q): return q.get("traktor")))
+func aile_es(i: int) -> int: return i ^ 1 if (i ^ 1) < koyluler.size() else -1  # Godot köylüleri kişilere bağlı değil: yan yana iki köylü bir aile sayılır
+func aile_at_var(i: int) -> bool:
+	var j := aile_es(i); if j < 0: return false
+	var x: Dictionary = kp_l()[j]; return x.get("at") or x.get("araba") or x.get("traktor")
+func aile_alet(i: int) -> int:
+	var m := 0
+	for j in [i, aile_es(i)]:
+		if j < 0: continue
+		var x: Dictionary = kp_l()[j]; m = max(m, int(x.get("alet", 0) if x.get("alet") != null else 0), 2 if x.get("traktor") else 0)
+	return m
+func aile_araba_al(ciftlik: bool):
+	if sayi_tam("tarla") == 0: return
+	var kp := kp_l()
+	for i in range(0, koyluler.size(), 2):
+		var uy: Array = [i] + ([i + 1] if i + 1 < koyluler.size() else [])
+		var top := 0.0
+		for j in uy: top += float(kp[j]["para"])
+		var arabali := -1
+		for j in uy:
+			if kp[j].get("araba") and not kp[j].get("traktor"): arabali = j
+		if arabali >= 0:
+			var al: int = 0
+			for j in uy: al = max(al, int(kp[j].get("alet", 0) if kp[j].get("alet") != null else 0))
+			var f := KOYLU_SABAN_FIYAT if al == 0 else (KOYLU_PULLUK_FIYAT if al == 1 and bina_var("demirci") else -1)
+			if f > 0 and top >= f:
+				var kalan := float(f)
+				for j in [arabali] + uy.filter(func(q): return q != arabali): var d: float = min(float(kp[j]["para"]), kalan); kp[j]["para"] = float(kp[j]["para"]) - d; kalan -= d
+				kp[arabali]["alet"] = al + 1; bildir("Bir aile %s! Tarlalar daha hızlı hazırlanacak." % ("tarlayı sürmek için ahşap karasaban yaptırdı" if al == 0 else "demirciden demir pulluk aldı")); return
+			continue
+		if not ciftlik or uy.any(func(j): return kp[j].get("araba") or kp[j].get("traktor") or kp[j].get("bicer")): continue
+		var atli := -1
+		for j in uy:
+			if kp[j].get("at"): atli = j
+		if atli < 0 or top < KOYLU_ARABA_FIYAT: continue
+		var kal := float(KOYLU_ARABA_FIYAT)
+		for j in [atli] + uy.filter(func(q): return q != atli): var d2: float = min(float(kp[j]["para"]), kal); kp[j]["para"] = float(kp[j]["para"]) - d2; kal -= d2
+		kp[atli]["araba"] = true; bildir("Bir aile birikimlerini birleştirip at arabası aldı!"); gazete("Bir aile at arabası sahibi oldu."); return
 func dayi_ayar() -> Dictionary:
 	if not kayit_v.get("dayi") is Dictionary: kayit_v["dayi"] = {"ekin": "oto", "acik": true, "orman": true}
 	return kayit_v["dayi"]
@@ -2526,7 +2611,10 @@ func bina_bilgi(b: Dictionary):
 	if t in ["benzinlik", "atcilik"]:
 		var kp: Array = kayit_v.get("kp", []) if kayit_v.get("kp") is Array else []
 		if t == "benzinlik": yaz.call("Traktörü olan köylü: %d · motoru ya da arabası olan: %d" % [kp.filter(func(x): return x is Dictionary and x.get("traktor")).size(), kp.filter(func(x): return x is Dictionary and (x.get("binek") == "motor" or x.get("oto"))).size()])
-		else: yaz.call("Atı olan köylü: %d. Köylüler çalıştıkça para biriktirip buradan at alır." % kp.filter(func(x): return x is Dictionary and x.get("at")).size())
+		else: yaz.call("Atı olan köylü: %d. Köylüler çalıştıkça para biriktirip buradan at alır (%d altın)." % [kp.filter(func(x): return x is Dictionary and x.get("at")).size(), KOYLU_AT_FIYAT])
+		var en := 0.0
+		for x in kp: if x is Dictionary: en = max(en, float(x.get("para", 0)))
+		yaz.call("En çok biriktiren köylünün parası: %d" % int(en))
 	if t in ["bayi", "kooperatif", "dayibasi"]:
 		var td := tarim_durum()
 		if int(td["elle"]) > 0:
@@ -4001,7 +4089,15 @@ func bina_goster(b: Dictionary):
 	secili_b = b
 	ciftlik_eylem(b)
 	bilgi_panel.visible = true
+	call_deferred("bilgi_boyut"); get_tree().create_timer(0.05).timeout.connect(bilgi_boyut)  # yazılar sarıldıktan sonra yeniden ölç
 
+func bilgi_boyut():
+	if not is_instance_valid(bilgi_kaydir): return
+	var ic: Control = bilgi_kaydir.get_child(0)
+	var en: float = get_viewport().get_visible_rect().size.y * 0.55
+	bilgi_kaydir.custom_minimum_size.y = min(ic.size.y if ic.size.y > 0 else ic.get_combined_minimum_size().y, en)
+	bilgi_panel.offset_left = 16; bilgi_panel.offset_right = -16
+	bilgi_panel.offset_top = bilgi_panel.offset_bottom - bilgi_panel.get_combined_minimum_size().y
 var _dokunma_bas := Vector2.ZERO
 var _surukledi := false
 func dokunma_sec(ekran: Vector2):
@@ -4340,7 +4436,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); dayi_adim(); olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); dayi_adim(); koylu_kazanc(1.0); olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim(); secim_adim()
 			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
