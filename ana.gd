@@ -743,7 +743,7 @@ func insaat_adim(k: Dictionary, dt: float) -> void:
 		k.ust.rotation.x = 0.1 + max(0.0, -f) * 0.3; k.kR.rotation.x = -2.7 + (f + 1) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.8
 func koylu_adim(dt: float):
 	insa_isci.clear()
-	sahne_adim(dt); gelen_adim(dt); yangin_adim(dt); cop_adim(dt)
+	sahne_adim(dt); gelen_adim(dt); yangin_adim(dt); cop_adim(dt); ozel_gorsel_adim(dt)
 	for k in koyluler:
 		if etkinlik_koylu(k, dt): continue
 		if sahne_koylu(k, dt): continue
@@ -3190,6 +3190,7 @@ func asker_dugun_adim():
 		_etk_test = true
 		var ar := OS.get_cmdline_user_args()
 		if "--duguntest" in ar: kayit_v["ozel"] = {"tur": "dugun", "damat": l[0]["id"], "gelin": l[1]["id"], "gun": gun_no()}
+		if "--ugurlamatest" in ar: kayit_v["ozel"] = {"tur": "ugurlama", "kisi": l[0]["id"], "gun": gun_no()}
 		if "--cenazetest" in ar: kayit_v["cenaze"] = {"gun": gun_no(), "ad": "Deneme Dede (90)"}
 	if kayit_v.get("ciftKur") != true:
 		for k in l:
@@ -3239,7 +3240,7 @@ func etkinlik_adim():
 	var e := etkinlik()
 	if e.is_empty() != _etk.is_empty() or (not e.is_empty() and e["tur"] != _etk.get("tur")):
 		if _etk_kok: _etk_kok.queue_free(); _etk_kok = null
-		for k in koyluler: k.erase("etkH"); k.ust.rotation.x = 0
+		for k in koyluler: k.erase("etkH"); k.ust.rotation.x = 0; k.gr.visible = true
 		if not e.is_empty():
 			_etk_kok = Node3D.new(); add_child(_etk_kok); _etk_kok.position = e["yer"]
 			if e["tur"] == "cenaze":
@@ -3257,7 +3258,39 @@ func etkinlik_adim():
 					var a := TAU * i / kat.size(); k["etkH"] = e["yer"] + Vector3(cos(a), 0, sin(a)) * 0.6
 				k["etkI"] = i
 	_etk = e
-	if not e.is_empty() and ("--duguntest" in OS.get_cmdline_user_args() or "--cenazetest" in OS.get_cmdline_user_args()): hedef = e["yer"]; kamera_guncelle()
+	if not e.is_empty() and ("--duguntest" in OS.get_cmdline_user_args() or "--cenazetest" in OS.get_cmdline_user_args() or "--ugurlamatest" in OS.get_cmdline_user_args()): hedef = e["yer"] + Vector3(0.8, 0, 0); kamera_guncelle()
+# uğurlama ve düğün görselleri (web ozelGorselAdim): askeri kamyon meydanın yanında bekler, asker el sallar, sonunda binip gider; düğünde gelinin al duvağı
+var _kamyon: Node3D
+var _duvak: Node3D
+func ozel_gorsel_adim(dt: float):
+	var tur: String = _etk.get("tur", "")
+	if tur != "ugurlama" and _kamyon: _kamyon.queue_free(); _kamyon = null
+	if tur != "dugun" and _duvak: _duvak.queue_free(); _duvak = null
+	var ozk: Array = koyluler.filter(func(k): return k.has("etkH") and int(k.get("etkI", -1)) <= 1)
+	ozk.sort_custom(func(x, y): return int(x.etkI) < int(y.etkI))
+	if tur == "" or ozk.is_empty(): return
+	var m: Vector3 = _etk["yer"]; var k0: Dictionary = ozk[0]
+	if tur == "ugurlama":
+		if _kamyon == null:
+			_kamyon = Node3D.new(); add_child(_kamyon); var s := sahne_yukle("kamyon")
+			if s: s.scale = Vector3.ONE * 1.2; s.rotation.y = PI; _kamyon.add_child(s)
+		var kalan: float = (1.0 - float(_etk["f"])) * 110.0; var gidis: float = max(0.0, 14.0 - kalan)
+		var baz := Vector3(m.x + 1.7, 0, m.z - 0.2); _kamyon.position = Vector3(baz.x, 0, baz.z + gidis * gidis * 0.06)
+		if kalan < 22:
+			k0["etkH"] = Vector3(baz.x - 0.35, 0, baz.z - 0.35)
+			if kalan <= 15: k0.gr.visible = false
+		else:
+			k0["asker"] = true
+	elif tur == "dugun":
+		# gelin ile damat ortada; gelinin başında al duvak
+		k0["etkH"] = m + Vector3(0.08, 0, 0)
+		if ozk.size() > 1: ozk[1]["etkH"] = m - Vector3(0.08, 0, 0)
+		if _duvak == null or _duvak.get_parent() != k0.ust:
+			if _duvak: _duvak.queue_free()
+			_duvak = Node3D.new(); var c := MeshInstance3D.new(); var cm := CylinderMesh.new(); cm.top_radius = 0.0; cm.bottom_radius = 0.05; cm.height = 0.11; c.mesh = cm
+			var mt := StandardMaterial3D.new(); mt.albedo_color = Color.html("#c4141c"); c.material_override = mt; _duvak.add_child(c)
+			var t := MeshInstance3D.new(); var sm := SphereMesh.new(); sm.radius = 0.012; sm.height = 0.024; t.mesh = sm; var mt2 := StandardMaterial3D.new(); mt2.albedo_color = Color.html("#e8c65a"); t.material_override = mt2; t.position.y = 0.06; _duvak.add_child(t)
+			_duvak.position = Vector3(0, 0.2, -0.004); k0.ust.add_child(_duvak)
 func etkinlik_koylu(k: Dictionary, dt: float) -> bool:
 	if _etk.is_empty() or not k.has("etkH"): return false
 	var hz: float = k.hiz; k.hiz = 0.4
@@ -3268,6 +3301,10 @@ func etkinlik_koylu(k: Dictionary, dt: float) -> bool:
 	if _etk["tur"] == "cenaze":
 		k.ust.rotation.x = lerp(k.ust.rotation.x, 0.25, dt * 3)
 		k.kR.rotation.x = lerp(k.kR.rotation.x, -0.5, dt * 3); k.kL.rotation.x = k.kR.rotation.x  # eller bağlı, başlar eğik
+	elif int(k.get("etkI", -1)) == 0 and _etk["tur"] == "ugurlama":
+		k.kR.rotation.x = -2.6 + sin(simdi_ms() / 1000.0 * 6.0) * 0.4; k.kL.rotation.x = 0.0  # asker el sallar
+	elif int(k.get("etkI", -1)) <= 1 and _etk["tur"] == "dugun":
+		k.kR.rotation.x = lerp(k.kR.rotation.x, 0.0, dt * 4); k.kL.rotation.x = lerp(k.kL.rotation.x, 0.0, dt * 4)
 	else:
 		# halay: kollar havada, omuz omuza sallanır, ritimle adım
 		var t := simdi_ms() / 1000.0 * 4.0 + int(k.etkI) * 0.0
