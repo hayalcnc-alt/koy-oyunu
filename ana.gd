@@ -96,6 +96,7 @@ func web_kaydi_ciz(ad: String):
 	kayit_v = v
 	# web'de sis kapalı (SIS_KAPALI): bütün ada açık, keşfedilecek kapalı bölge yok
 	var ac_ := []; ac_.resize(SN_ * SN_); ac_.fill(1); v["ac"] = ac_; v["kasif"] = null
+	if v.get("nufus") is Array: v["nufus"] = v["nufus"].filter(func(k): return k is Dictionary and k.has("id") and k.has("dogum") and k.has("cins") and k.has("ad"))
 	if v.get("zaman") != null:  # kapalıyken geçen süre inşaata sayılır
 		var gec: float = max(0.0, (simdi_ms() - float(v["zaman"])) / 1000.0); _yokken = gec
 		for b in v["b"]:
@@ -551,9 +552,17 @@ func koylu_ayarla():
 		var c := calisan(b)
 		if c > 0 and (mesai or not b["tip"] in DUKKAN):
 			for q in c: slotlar.append(b)
+	# web isciSira: emekliler (yaşlılar) çalışmaz; boş vakitlerinde gezer, çöp toplar
+	var emekli: int = min(koyluler.size(), emekli_say(int(sonuc.get("yer", 0))))
+	var j := 0
 	for i in koyluler.size():
 		var k: Dictionary = koyluler[i]
-		var yeni = slotlar[i] if i < slotlar.size() else null
+		var yasli: bool = i >= koyluler.size() - emekli
+		k["yasli"] = yasli
+		var yeni = null
+		if not yasli:
+			yeni = slotlar[j] if j < slotlar.size() else null
+			j += 1
 		var eski = k.get("isB")
 		if (int(yeni["id"]) if yeni != null else 0) != (int(eski["id"]) if eski != null else 0):
 			oduncu_birak(k); k["bekle"] = 0.0; k.erase("isD")
@@ -733,7 +742,7 @@ func insaat_adim(k: Dictionary, dt: float) -> void:
 		k.ust.rotation.x = 0.1 + max(0.0, -f) * 0.3; k.kR.rotation.x = -2.7 + (f + 1) * 0.9; k.kL.rotation.x = k.kR.rotation.x * 0.8
 func koylu_adim(dt: float):
 	insa_isci.clear()
-	sahne_adim(dt); gelen_adim(dt); yangin_adim(dt)
+	sahne_adim(dt); gelen_adim(dt); yangin_adim(dt); cop_adim(dt)
 	for k in koyluler:
 		if etkinlik_koylu(k, dt): continue
 		if sahne_koylu(k, dt): continue
@@ -744,6 +753,7 @@ func koylu_adim(dt: float):
 		if isb != null and isb["tip"] == "oduncu": oduncu_adim(k, dt, isb); continue
 		if k.get("od") != null: oduncu_adim(k, dt); continue
 		if isb != null and isb["tip"] != "tarla": is_adim(k, dt); continue
+		if cop_koylu(k, dt): continue
 		var gr: Node3D = k.gr
 		var fark: Vector3 = k.hedef - gr.position; fark.y = 0
 		if k.bekle > 0:
@@ -2095,6 +2105,7 @@ func memnuniyet() -> Dictionary:
 	if bina_var("belediye") and kayit_v.get("vergi", "orta") != "orta" and kayit_v.get("vergi") != null: ekle.call(true, vk["m"], "Vergiler düşük" if int(vk["m"]) > 0 else "Vergiler yüksek")
 	ekle.call(int(sonuc.get("yer", 0)) > 0 and koyluler.size() > int(sonuc.get("yer", 0)) * 1.4, -10, "Evler kalabalık")
 	ekle.call(float(mevsim()["kis"]) > 0.5 and not bina_var("hamam"), -5, "Kış soğuğu (hamam iyi gelir)")
+	ekle.call(copler.size() > 2, -min(15, copler.size() * 2), "Yerlerde çöp (%d)" % copler.size())
 	ekle.call(kayit_v.get("cenaze") is Dictionary and int(kayit_v["cenaze"]["gun"]) == gun_no(), -8, "Köyde yas var")
 	ekle.call(hava() == "kuraklik" and not bina_var("kuyu"), -6, "Kuraklık (kuyu yok)"); ekle.call(hava() == "firtina", -3, "Fırtına")
 	var eksik := [["cami", 10, "Cami"], ["kahvehane", 8, "Kahvehane"], ["okul", 8, "Okul"], ["park", 6, "Çocuk parkı"], ["hamam", 6, "Hamam"], ["sifa", 6, "Şifa evi"], ["bakkal", 4, "Bakkal"], ["berber", 3, "Berber"], ["lamba", 2, "Sokak lambası"]].filter(func(e): return not bina_var(e[0]))
@@ -2898,9 +2909,25 @@ func kisi_bul(id) -> Variant:
 	return null
 func omur(k: Dictionary) -> int:
 	return 68 + (int(k["id"]) * 7919) % 25 + (6 if bina_var("saglik") else (3 if bina_var("sifa") else 0)) + (4 if bina_var("hastane") else 0)
+const ERKEK_AD := ["Ahmet", "Mehmet", "Mustafa", "Ali", "Hasan", "Hüseyin", "İbrahim", "Osman", "Yusuf", "Ömer", "Murat", "Emre", "Kemal", "Halil", "Recep", "Ramazan", "İsmail", "Süleyman", "Kadir", "Cemal", "Yakup", "Bekir", "Selim", "Rıza"]
+const KADIN_AD := ["Ayşe", "Fatma", "Emine", "Hatice", "Zeynep", "Elif", "Meryem", "Hacer", "Esra", "Merve", "Havva", "Sultan", "Gülsüm", "Şerife", "Hanife", "Zehra", "Kübra", "Saniye", "Nuriye", "Dilek", "Songül", "Hayriye", "Fadime", "Nazife"]
+func kisi_yap(cins: String, yas_yil: float) -> Dictionary:
+	kayit_v["kisiId"] = int(kayit_v.get("kisiId", 0) if kayit_v.get("kisiId") != null else 0) + 1
+	var l: Array = KADIN_AD if cins == "k" else ERKEK_AD
+	return {"id": kayit_v["kisiId"], "ad": l[randi() % l.size()], "cins": cins, "dogum": gun_kesir() - yas_yil * YIL_GUN - randf() * YIL_GUN * 0.9}
+func nufus_kur():
+	# web nufusKur: geçersiz kişi kayıtları atılır; liste boşsa köylüler adlarıyla yeniden kurulur
+	var l: Array = (kayit_v.get("nufus", []) if kayit_v.get("nufus") is Array else []).filter(func(k): return k is Dictionary and k.has("id") and k.has("dogum") and k.has("cins") and k.has("ad"))
+	if not l.is_empty(): kayit_v["nufus"] = l; return
+	kayit_v["yasSurum"] = 2; l = []
+	var n: int = max(3, int(sonuc.get("yer", 3)))
+	for i in n: l.append(kisi_yap("k" if i % 2 else "e", (61 + randi() % 12) if i % 5 == 4 else (20 + randi() % 35)))
+	var ev_say: int = kayit_v["b"].filter(func(b): return ev_mi(b["tip"])).size()
+	for i in min(8, int(ceil(ev_say * 0.7))): var c := kisi_yap("k" if randf() < 0.5 else "e", 1 + randi() % 15); c["dogumKoy"] = true; l.append(c)
+	kayit_v["nufus"] = l
 var _yas_goc := false
 func olum_kontrol():
-	if not _yas_goc: _yas_goc = true; yas_gocu()
+	if not _yas_goc: _yas_goc = true; nufus_kur(); yas_gocu()
 	var bugun := gun_no(); var h := oyun_saati(); var mez := bina_var("mezarlik")
 	if not kayit_v.get("mezarlar") is Array: kayit_v["mezarlar"] = []
 	if kayit_v.get("cenaze") is Dictionary:
@@ -3122,6 +3149,54 @@ func ad_sor():
 		var y := g.text.strip_edges().left(16)
 		if y != "": kayit_v["ad"] = y; kayit_yaz_koy(); ust_guncelle()
 		p.queue_free(); _modal = null)
+# --- çöpler (web copAdim/copKaldir): ara sıra evlerin, yolların, pazarın yanına çöp düşer; boştaki köylüler eğilip toplar. Çöp keyfi düşürür
+var copler: Array = []
+var _cop_sayac := 20.0
+var _cop_mt: Array = []
+func cop_adim(dt: float):
+	_cop_sayac -= dt
+	if _cop_sayac > 0: return
+	_cop_sayac = randf_range(35, 75) if not "--cop" in OS.get_cmdline_user_args() else 1.0
+	if "--cop" in OS.get_cmdline_user_args(): print("COP bos=", koyluler.filter(func(k): return k.get("isB") == null).size(), " od=", koyluler.filter(func(k): return k.get("od") != null).size(), " ", copler.size(), " alinan ", copler.filter(func(c): return c["alan"] != null).size(), " toplayan ", koyluler.filter(func(k): return k.has("cop")).size())
+	var yerler: Array = kayit_v["b"].filter(func(b): return b.get("insa") == null and (ev_mi(b["tip"]) or b["tip"] in ["yol", "asfalt", "pazar", "hal", "park", "muhtar"]))
+	if copler.size() >= 8 or yerler.is_empty() or koyluler.is_empty(): return
+	if _cop_mt.is_empty():
+		for r in ["#e8e2d0", "#3e6b4a", "#a8743a"]: var m := StandardMaterial3D.new(); m.albedo_color = Color.html(r); m.roughness = 0.9 if r != "#3e6b4a" else 0.3; _cop_mt.append(m)
+	var b: Dictionary = yerler[randi() % yerler.size()]; var mm := bina_merkez(b); var s: float = BOY.get(b["tip"], 1)
+	var a := randf() * TAU; var r := s / 2 + 0.2 + randf() * 0.4; var k := randi() % 3
+	var mi := MeshInstance3D.new()
+	if k == 0: var bm := BoxMesh.new(); bm.size = Vector3(0.05, 0.004, 0.035); mi.mesh = bm  # kâğıt
+	elif k == 1: var cm := CylinderMesh.new(); cm.top_radius = 0.012; cm.bottom_radius = 0.012; cm.height = 0.05; mi.mesh = cm; mi.rotation.x = PI / 2  # şişe
+	else: var sm := SphereMesh.new(); sm.radius = 0.02; sm.height = 0.04; mi.mesh = sm  # kese
+	mi.material_override = _cop_mt[k]; mi.rotation.y = randf() * TAU; add_child(mi)
+	mi.position = Vector3(mm.x + cos(a) * r, 0.012 if k == 1 else 0.008, mm.z + sin(a) * r)
+	copler.append({"m": mi, "alan": null})
+func cop_kaldir(c: Dictionary):
+	copler.erase(c)
+	if is_instance_valid(c["m"]): c["m"].queue_free()
+func cop_koylu(k: Dictionary, dt: float) -> bool:
+	# boştaki köylü yerdeki çöpü görünce gidip eğilir, alır
+	if not k.has("cop"):
+		if copler.is_empty() or k.get("isB") != null or k.get("od") != null or float(k.bekle) > 0 or randf() > dt * 0.5: return false
+		var en = null; var d := 1e9
+		for c in copler:
+			if c["alan"] != null: continue
+			var dd: float = (c["m"].position - k.gr.position).length_squared()
+			if dd < d: d = dd; en = c
+		if en == null or d > 64: return false
+		en["alan"] = k; k["cop"] = en; k["copT"] = 0.0
+	var c: Dictionary = k["cop"]
+	if not copler.has(c): k.erase("cop"); k.ust.rotation.x = 0; return false
+	var p: Vector3 = c["m"].position; p.y = 0
+	if not koylu_yuru(k, p - Vector3(0.12, 0, 0), dt): return true
+	k["copT"] = float(k.copT) + dt; k.ust.rotation.x = min(1.2, float(k.copT) * 3); k.kR.rotation.x = -0.4
+	k.gr.rotation.y = lerp_angle(k.gr.rotation.y, atan2(p.x - k.gr.position.x, p.z - k.gr.position.z), dt * 6)
+	if float(k.copT) > 1.1:
+		cop_kaldir(c); k.erase("cop"); k.ust.rotation.x = 0; k.bekle = 0.3
+		# en yakın yola dön
+		var en := en_yakin_yol(k.gr.position)
+		if en >= 0: k.karo = en; k.hedef = karo_poz(en)
+	return true
 # --- rehber: web rehberAdaylar/rehberGuncelle — altta sıradaki işi öneren kart
 var rehber_kart: PanelContainer
 var rehber_sus := {}
