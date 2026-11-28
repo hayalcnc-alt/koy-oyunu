@@ -28,6 +28,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Rehber kartı (hasat, sipariş, hazır ürün, aç hayvan, boş tarla, boş atölye, yeni bina, tarla öner; X ile 3 dk sus, seviyeye kalan tecrübe), seviye atlama penceresi (ödül + yeni açılanlar), İNŞA çekmecesi kategorilerle ve kilit nedenleriyle (web kartEngel: seviye, nüfus şartı, zaten var, tarla sınırı, bahçe sayısı, boş köylü), alet/kereste maliyetleri ambardan
 - [x] Üst çubuk web gibi: adın altında seviye ilerleme çubuğu, köylü çipi “çalışan/iş gücü” (fazlaysa kırmızı), ambar çipi (ambardaki ürün toplamı); keyif çipi dişlinin yanına alındı
 - [x] Çimende ot tutamları, kır çiçekleri ve koyu çalılar (web araziKur, parçalı MultiMesh); tarlalarda tarla başına 3 çapacı (en çok 48), kamera başka tarlalara gidince onlar da oraya geçer
+- [x] Gece web gibi: ay ışığı tepeden ve daha güçlü vurur (gölgeli, mavimsi), renkler solar (yeşiller parlamaz)
 - [x] Köy keyfi (web memnuniyet: hizmetler, kapasite oranı, lamba/yol/bahçe, bayram, kış/kuraklık/fırtına, kalabalık, vergi), keyif çipi + nedenler paneli, keyfe göre toplama hızı; enerji (güneş/rüzgâr), turist, vergi geliri, belediye kasası ve vergi kademesi seçimi
 
 ## Eksik (önem sırasıyla)

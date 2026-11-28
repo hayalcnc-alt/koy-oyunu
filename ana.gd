@@ -3967,13 +3967,15 @@ func gun_isigi():
 	var h := oyun_saati()
 	var gnd: float = clamp(sin((h - 5.5) / 15.0 * PI), 0.0, 1.0)   # 5.5 doğuş, 20.5 batış
 	var gece := 1.0 - smoothstep(0.0, 0.25, gnd)
-	gunes.rotation_degrees = Vector3(-10 - 55 * gnd, 35 + (h - 12) * 8, 0)
-	gunes.light_energy = 0.8 * smoothstep(0.0, 0.3, gnd) + 0.16 * gece
-	gunes.light_color = Color.html("#ffe6c4").lerp(Color.html("#ff9a5a"), 1.0 - smoothstep(0.1, 0.5, gnd)).lerp(Color.html("#8fa6d8"), gece)
+	gunes.rotation_degrees = Vector3(-10 - 55 * gnd - 50 * gece, 35 + (h - 12) * 8 * (1.0 - gece), 0)  # ay tepeden vurur
+	gunes.light_energy = 0.8 * smoothstep(0.0, 0.3, gnd) + 0.5 * gece  # gece mavi ay ışığı, gölgeli
+	gunes.light_color = Color.html("#ffe6c4").lerp(Color.html("#ff9a5a"), 1.0 - smoothstep(0.1, 0.5, gnd)).lerp(Color.html("#7d95d6"), gece)
 	ortam_e.background_color = Color.html("#d3e1e6").lerp(Color.html("#e9b48c"), (1.0 - smoothstep(0.1, 0.4, gnd)) * (1.0 - gece)).lerp(Color.html("#0c1424"), gece)
 	ortam_e.fog_light_color = ortam_e.background_color
 	ortam_e.ambient_light_color = Color.html("#a9ad9f").lerp(Color.html("#4a5a88"), gece)
 	ortam_e.ambient_light_energy = 0.24 + 0.36 * gece
+	# web'deki gibi gece renkler solar, mavimsi ay ışığı (yeşiller parlamasın)
+	ortam_e.adjustment_saturation = lerp(1.3, 0.85, gece); ortam_e.adjustment_brightness = lerp(1.0, 1.05, gece)
 	if lamba_hale: lamba_hale.visible = gece > 0.1
 	# geceleri pencereler ve sokak lambaları yanar
 	for hx in ["26343a", "ffd98a"]:
