@@ -108,12 +108,16 @@ func web_kaydi_ciz(ad: String):
 			for dx in bx: karo_bina[(int(b["z"]) + dz) * WN + int(b["x"]) + dx] = b
 	var t: Array = v["t"]
 	arazi_t = t
-	# kara karoları tek ağda; deniz düz su; dere (4) suyla
+	yol_serit_ham = {}
+	for b in v["b"]:
+		if b["tip"] in ["yol", "asfalt", "kopru"]: yol_serit_ham[int(b["z"]) * WN + int(b["x"])] = true
+	irmak_egri_kur(v); var bant := irmak_bant(t); irmak_bant_k = bant
+	# kara karoları tek ağda; deniz düz su; dere (4) suyla; derenin çevresi oyulmuş yatak (irmak_yatak)
 	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for z in WN:
 		for x in WN:
 			var k := int(t[z * WN + x])
-			if k == 0 or k == 4: continue
+			if k == 0 or k == 4 or bant.has(z * WN + x): continue
 			var x0 := x - YARI; var z0 := z - YARI
 			for p in [Vector3(x0, 0, z0), Vector3(x0 + 1, 0, z0), Vector3(x0, 0, z0 + 1), Vector3(x0 + 1, 0, z0), Vector3(x0 + 1, 0, z0 + 1), Vector3(x0, 0, z0 + 1)]:
 				st.set_normal(Vector3.UP); st.add_vertex(p)
@@ -122,6 +126,9 @@ func web_kaydi_ciz(ad: String):
 	mt.albedo_texture = load("res://doku/cim.png"); mt.uv1_triplanar = true; mt.uv1_world_triplanar = true; mt.uv1_scale = Vector3.ONE * 0.22
 	var cc := Color.html("#7b9443"); mt.albedo_color = Color(cc.r * 0.84, cc.g * 0.86, cc.b * 0.55); kara.material_override = mt
 	cim_mt = mt; cim_renk = mt.albedo_color
+	mt.vertex_color_use_as_albedo = true  # yatak ağı kenardan dibe toprak rengine döner (düz zeminde renk beyaz = değişmez)
+	if not bant.is_empty():
+		var ym := MeshInstance3D.new(); ym.mesh = irmak_yatak(t, bant); ym.set_surface_override_material(0, mt); add_child(ym)
 	# deniz: kara maskesini bulanıklaştır (kıyıya uzaklık), web'deki su shader'ı
 	var img := Image.create(WN, WN, false, Image.FORMAT_RF)
 	var km := PackedFloat32Array(); km.resize(WN * WN)
@@ -149,15 +156,16 @@ func web_kaydi_ciz(ad: String):
 	for z in WN:
 		for x in WN:
 			var k := int(t[z * WN + x]); if k == 0 or k == 4: continue
+			var bnt := bant.has(z * WN + x)
 			var kiyi := false; var kiyid := false
 			for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
 				var xx: int = x + d[0]; var zz: int = z + d[1]
 				var kt := 0 if (xx < 0 or zz < 0 or xx >= WN or zz >= WN) else int(t[zz * WN + xx])
 				if kt == 0: kiyid = true
-				if kt == 0 or kt == 4: kiyi = true
+				if kt == 0 and not bnt: kiyi = true
 			var cx := x + 0.5 - YARI; var cz := z + 0.5 - YARI
 			if kiyi: parca(yan_st, yanb, Transform3D(Basis(), Vector3(cx, -0.302, cz)), Color.html("#7a5c3e"))
-			if kiyid:
+			if kiyid and not bnt:
 				for p in [Vector3(-0.5, 0.004, -0.5), Vector3(0.5, 0.004, -0.5), Vector3(-0.5, 0.004, 0.5), Vector3(0.5, 0.004, -0.5), Vector3(0.5, 0.004, 0.5), Vector3(-0.5, 0.004, 0.5)]:
 					kum_st.set_normal(Vector3.UP); kum_st.add_vertex(Vector3(cx, 0, cz) + p)
 	# dere: dere karolarında akan su (web: -0.13, denize komşuysa -0.2)
@@ -166,13 +174,9 @@ func web_kaydi_ciz(ad: String):
 		for x in WN:
 			if int(t[z * WN + x]) != 4: continue
 			dere_var = true
-			var dy := -0.13
-			for dz in [-1, 0, 1]:
-				for dx in [-1, 0, 1]:
-					var xx: int = x + dx; var zz: int = z + dz
-					if xx >= 0 and zz >= 0 and xx < WN and zz < WN and int(t[zz * WN + xx]) == 0: dy = -0.2
+			var dy := -0.13  # web irmakMeshYap: su yüzeyi yatağın içinde, kıyı eğimiyle kesişir
 			var cx := x + 0.5 - YARI; var cz := z + 0.5 - YARI
-			for p in [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5), Vector3(-0.5, 0, 0.5), Vector3(0.5, 0, -0.5), Vector3(0.5, 0, 0.5), Vector3(-0.5, 0, 0.5)]:
+			for p in [Vector3(-0.51, 0, -0.51), Vector3(0.51, 0, -0.51), Vector3(-0.51, 0, 0.51), Vector3(0.51, 0, -0.51), Vector3(0.51, 0, 0.51), Vector3(-0.51, 0, 0.51)]:
 				d_st.set_normal(Vector3.UP); d_st.add_vertex(Vector3(cx, dy, cz) + p)
 	if dere_var:
 		var dm := MeshInstance3D.new(); dm.mesh = d_st.commit(); add_child(dm)
@@ -364,6 +368,131 @@ func dag_kur(t: Array):
 	mt.albedo_texture = load("res://doku/kaya.png"); mt.uv1_triplanar = true; mt.uv1_world_triplanar = true; mt.uv1_scale = Vector3.ONE * 0.9
 	mi.material_override = mt
 
+# --- kıvrımlı dere (web irmakEgriKur/irmakMesafe/irmakBant/irmakYatakYap): dere karolarından yumuşak eğri, çevresi oyulmuş yatak
+var irmak_seg: Array = []
+var irmak_kova := {}
+var irmak_golet = null
+const IRMAK_IC := 0.46
+const IRMAK_DIS := 0.84
+func irmak_egri_kur(v: Dictionary):
+	irmak_seg = []; irmak_kova = {}; irmak_golet = null
+	var ir = v.get("irmak")
+	if not ir is Dictionary or not ir.get("yol") is Array or ir["yol"].size() < 2: return
+	var l: Array = ir["yol"]
+	var p := []
+	for i in l: p.append(Vector2(int(i) % WN + 0.5 - YARI, int(i) / WN + 0.5 - YARI))
+	var s1: Vector2 = p[-1]; var s0: Vector2 = p[-2]; p.append(s1 + (s1 - s0) * 1.5)  # denize doğru uzat
+	for k in 3:  # Chaikin yumuşatma
+		var q := [p[0]]
+		for j in p.size() - 1:
+			var A: Vector2 = p[j]; var B: Vector2 = p[j + 1]; q.append(A * 0.75 + B * 0.25); q.append(A * 0.25 + B * 0.75)
+		q.append(p[-1]); p = q
+	for j in p.size() - 1:
+		var A: Vector2 = p[j]; var B: Vector2 = p[j + 1]; irmak_seg.append([A, B])
+		var x0 := int(floor(min(A.x, B.x) + YARI)) - 2; var x1 := int(floor(max(A.x, B.x) + YARI)) + 2
+		var z0 := int(floor(min(A.y, B.y) + YARI)) - 2; var z1 := int(floor(max(A.y, B.y) + YARI)) + 2
+		for z in range(z0, z1 + 1):
+			for x in range(x0, x1 + 1):
+				if x < 0 or z < 0 or x >= WN or z >= WN: continue
+				var kk := z * WN + x
+				if not irmak_kova.has(kk): irmak_kova[kk] = []
+				irmak_kova[kk].append(j)
+	var g: Array = ir.get("golet", []) if ir.get("golet") is Array else []
+	if not g.is_empty():
+		var c := Vector2.ZERO
+		for i in g + [l[0]]: c += Vector2(int(i) % WN + 0.5 - YARI, int(i) / WN + 0.5 - YARI)
+		c /= g.size() + 1; irmak_golet = {"c": c, "r": 0.75 + sqrt(g.size()) * 0.32}
+func irmak_mesafe(wx: float, wz: float) -> float:
+	var en := 9.0
+	var k = irmak_kova.get(int(floor(wz + YARI)) * WN + int(floor(wx + YARI)))
+	if k != null:
+		var P := Vector2(wx, wz)
+		for j in k:
+			var A: Vector2 = irmak_seg[j][0]; var B: Vector2 = irmak_seg[j][1]; var D := B - A
+			var tt: float = clamp((P - A).dot(D) / max(1e-6, D.length_squared()), 0.0, 1.0)
+			en = min(en, (A + D * tt - P).length())
+	if irmak_golet != null: en = min(en, max(0.0, (Vector2(wx, wz) - irmak_golet["c"]).length() - irmak_golet["r"] + 0.45))
+	return en
+func irmak_profil(d: float) -> float:
+	if d >= IRMAK_DIS: return 0.0
+	if d <= IRMAK_IC: return -0.22
+	var f := (d - IRMAK_IC) / (IRMAK_DIS - IRMAK_IC); return -0.22 * (1.0 - f * f * (3.0 - 2.0 * f))
+func irmak_bant(t: Array) -> Dictionary:
+	var b := {}
+	if irmak_seg.is_empty(): return b
+	for i in WN * WN:
+		if int(t[i]) != 4: continue
+		var x := i % WN; var z := i / WN
+		for dz in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				var xx: int = x + dx; var zz: int = z + dz
+				if xx < 0 or zz < 0 or xx >= WN or zz >= WN: continue
+				var j := zz * WN + xx; var tj := int(t[j])
+				if tj == 4 or (tj in [1, 2, 3] and not karo_bina.has(j) and not yol_serit_ham.has(j)): b[j] = true
+	return b
+var yol_serit_ham := {}
+var irmak_bant_k := {}
+func yatak_y(wx: float, wz: float) -> float:
+	var i := int(floor(wz + YARI)) * WN + int(floor(wx + YARI))
+	return irmak_profil(irmak_mesafe(wx, wz)) if irmak_bant_k.has(i) else 0.0
+func irmak_yatak(t: Array, bant: Dictionary) -> ArrayMesh:
+	const SUB := 4; var W := WN * SUB + 1; var vmap := {}
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var taban := Color("#7b9443"); var c1 := Color("#6e5a40"); var c2 := Color("#5a4a36")
+	var verts := PackedVector3Array(); var cols := PackedColorArray()
+	var vert := func(gx: int, gz: int) -> int:
+		var key := gz * W + gx
+		if vmap.has(key): return vmap[key]
+		var wx := float(gx) / SUB - YARI; var wz := float(gz) / SUB - YARI
+		var sabit := false; var tx := float(gx) / SUB; var tz := float(gz) / SUB
+		for ab in [[int(ceil(tx)) - 1, int(ceil(tz)) - 1], [int(floor(tx)), int(ceil(tz)) - 1], [int(ceil(tx)) - 1, int(floor(tz))], [int(floor(tx)), int(floor(tz))]]:
+			if ab[0] < 0 or ab[1] < 0 or ab[0] >= WN or ab[1] >= WN: continue
+			var ti: int = ab[1] * WN + ab[0]
+			if not bant.has(ti) and int(t[ti]) > 0: sabit = true
+		var h := 0.0 if sabit else irmak_profil(irmak_mesafe(wx, wz))
+		if not sabit and h > -0.2 and h < 0: h += sin(wx * 7.1) * cos(wz * 6.3) * 0.008
+		var f: float = min(1.0, -h / 0.22)
+		var c := taban.lerp(c1, smoothstep(0.05, 0.45, f)).lerp(c2, smoothstep(0.6, 1.0, f))
+		var j := verts.size(); verts.append(Vector3(wx, h, wz)); cols.append(Color(min(1.0, c.r / taban.r), min(1.0, c.g / taban.g), min(1.0, c.b / taban.b)))
+		vmap[key] = j; return j
+	var ind := PackedInt32Array(); var yan := []
+	for i in bant:
+		var x: int = i % WN; var z: int = i / WN
+		for sz in SUB:
+			for sx in SUB:
+				var gx := x * SUB + sx; var gz := z * SUB + sz
+				var A: int = vert.call(gx, gz); var B: int = vert.call(gx + 1, gz); var C: int = vert.call(gx, gz + 1); var D: int = vert.call(gx + 1, gz + 1)
+				ind.append_array([A, B, C, B, D, C])
+		# denize bakan kenarlara toprak etek
+		for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+			var xx: int = x + d[0]; var zz: int = z + d[1]
+			var tt := 0 if (xx < 0 or zz < 0 or xx >= WN or zz >= WN) else int(t[zz * WN + xx])
+			if tt != 0: continue
+			for s2 in SUB:
+				var g1: Array; var g2: Array
+				if d[0] == 1: g1 = [(x + 1) * SUB, z * SUB + s2]; g2 = [(x + 1) * SUB, z * SUB + s2 + 1]
+				elif d[0] == -1: g1 = [x * SUB, z * SUB + s2 + 1]; g2 = [x * SUB, z * SUB + s2]
+				elif d[1] == 1: g1 = [x * SUB + s2 + 1, (z + 1) * SUB]; g2 = [x * SUB + s2, (z + 1) * SUB]
+				else: g1 = [x * SUB + s2, z * SUB]; g2 = [x * SUB + s2 + 1, z * SUB]
+				yan.append([verts[vert.call(g1[0], g1[1])], verts[vert.call(g2[0], g2[1])]])
+	for k in ind.size():
+		var j := ind[k]
+		if k % 3 == 0:
+			var n := (verts[ind[k + 1]] - verts[ind[k]]).cross(verts[ind[k + 2]] - verts[ind[k]]).normalized()
+			if n.y < 0: n = -n
+			for q in 3: st.set_normal(n); st.set_color(cols[ind[k + q]]); st.add_vertex(verts[ind[k + q]])
+	var m := st.commit()
+	if not yan.is_empty():
+		var ys := SurfaceTool.new(); ys.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var yc := Color("#7a5c3e")
+		for e in yan:
+			var p1: Vector3 = e[0]; var p2: Vector3 = e[1]; var a1 := Vector3(p1.x, -0.6, p1.z); var a2 := Vector3(p2.x, -0.6, p2.z)
+			var n := (p2 - p1).cross(a1 - p1).normalized()
+			for v3 in [p1, p2, a1, p2, a2, a1]: ys.set_normal(n); ys.set_color(yc); ys.add_vertex(v3)
+		ys.commit(m)
+		var ymt := StandardMaterial3D.new(); ymt.roughness = 1.0; ymt.vertex_color_use_as_albedo = true; ymt.albedo_texture = load("res://doku/toprak.png"); ymt.uv1_triplanar = true; ymt.uv1_world_triplanar = true; ymt.uv1_scale = Vector3.ONE * 1.2
+		m.surface_set_material(1, ymt)
+	return m
 func yerY(wx: float, wz: float) -> float:
 	if kosH.is_empty(): return 0.0
 	var fx := wx + YARI; var fz := wz + YARI
@@ -905,7 +1034,7 @@ func web_orman(t: Array):
 					var ox := (rnd(i, 10 + k2) - 0.5) * (0.55 if n > 1 else 0.2); var oz := (rnd(i, 20 + k2) - 0.5) * (0.55 if n > 1 else 0.2)
 					var sc := (0.8 if n > 1 else 1.05) * (0.8 + rnd(i, 30 + k2) * 0.45)
 					var bz := Basis.from_euler(Vector3((rnd(i, 45 + k2) - 0.5) * 0.08, rnd(i, 40 + k2) * TAU, (rnd(i, 46 + k2) - 0.5) * 0.08)).scaled(Vector3(sc, sc * (0.9 + rnd(i, 47 + k2) * 0.25), sc))
-					liste["cam" if rnd(i, 50 + k2) < 0.5 else "mese"].append(Transform3D(bz, Vector3(px + ox, 0, pz + oz)))
+					liste["cam" if rnd(i, 50 + k2) < 0.5 else "mese"].append(Transform3D(bz, Vector3(px + ox, yatak_y(px + ox, pz + oz), pz + oz)))
 			elif k == 5:
 				var h0 := yerY(px, pz)
 				if h0 < 2.4 and rnd(i, 610) < 0.3:
@@ -914,7 +1043,7 @@ func web_orman(t: Array):
 				elif rnd(i, 620) < 0.35:
 					var sc := 0.9 + rnd(i, 621) * 1.1; var ox := (rnd(i, 622) - 0.5) * 0.6; var oz := (rnd(i, 623) - 0.5) * 0.6
 					liste["kaya"].append(Transform3D(Basis.from_euler(Vector3(rnd(i, 624) * 0.6, rnd(i, 625) * 6, 0)).scaled(Vector3(sc, sc * 0.7, sc)), Vector3(px + ox, yerY(px + ox, pz + oz) + 0.02, pz + oz)))
-			elif k == 1 and not karo_bina.has(i) and not yol_serit.has(i):
+			elif k == 1 and not karo_bina.has(i) and not yol_serit.has(i) and not irmak_bant_k.has(i):
 				# web araziKur: çimende ot tutamları, ara sıra kır çiçeği ve koyu çalı
 				for k2 in 3:
 					if rnd(i, 100 + k2) < 0.2: continue
