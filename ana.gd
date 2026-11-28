@@ -1138,17 +1138,23 @@ func arayuz_kur():
 	rz.add_theme_stylebox_override("panel", rs); r1.add_child(rz)
 	ust_lv = Label.new(); ust_lv.add_theme_font_size_override("font_size", 30); ust_lv.add_theme_color_override("font_color", Color(0.25, 0.16, 0.04)); rz.add_child(ust_lv)
 	var p := PanelContainer.new(); p.add_theme_stylebox_override("panel", cip_stil()); r1.add_child(p)
-	ust_etiket = Label.new(); ust_etiket.add_theme_font_size_override("font_size", 27); ust_etiket.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); p.add_child(ust_etiket)
+	var pv := VBoxContainer.new(); pv.add_theme_constant_override("separation", 2); p.add_child(pv)
+	ust_etiket = Label.new(); ust_etiket.add_theme_font_size_override("font_size", 27); ust_etiket.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); pv.add_child(ust_etiket)
+	# web'deki gibi adın altında seviye ilerleme çubuğu
+	ust_xp = ProgressBar.new(); ust_xp.show_percentage = false; ust_xp.custom_minimum_size = Vector2(0, 8); ust_xp.max_value = 1.0
+	var xb := StyleBoxFlat.new(); xb.bg_color = Color(0, 0, 0, 0.35); xb.set_corner_radius_all(4); ust_xp.add_theme_stylebox_override("background", xb)
+	var xf := StyleBoxFlat.new(); xf.bg_color = Color(0.96, 0.77, 0.26); xf.set_corner_radius_all(4); ust_xp.add_theme_stylebox_override("fill", xf); pv.add_child(ust_xp)
 	p.mouse_filter = Control.MOUSE_FILTER_STOP; p.gui_input.connect(func(o): if (o is InputEventMouseButton and o.pressed) or (o is InputEventScreenTouch and o.pressed): hedef_ac())
 	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 8); ustv.add_child(r2)
 	for k in ["altin", "odun", "tas", "nufus"]: ust_cip[k] = cip_yap(r2, k)
+	var r3 := HBoxContainer.new(); ustv.add_child(r3); ust_cip["ambar"] = cip_yap(r3, "ambar")
 	var sp := PanelContainer.new(); sp.add_theme_stylebox_override("panel", cip_stil()); sp.set_anchors_preset(Control.PRESET_TOP_RIGHT); sp.offset_left = -300; sp.offset_right = -14; sp.grow_horizontal = Control.GROW_DIRECTION_BEGIN; sp.offset_top = 14; cl.add_child(sp)
 	var sh := HBoxContainer.new(); sp.add_child(sh); sh.add_child(ikon_yap("saat", 34))
 	ust_saat = Label.new(); ust_saat.add_theme_font_size_override("font_size", 27); ust_saat.add_theme_color_override("font_color", Color(1, 0.96, 0.88)); sh.add_child(ust_saat)
 	# keyif çipi (web mutluCip): dokununca nedenleri gösterir
 	ust_keyif = Button.new(); ust_keyif.add_theme_font_size_override("font_size", 25); ust_keyif.add_theme_color_override("font_color", Color(1, 0.96, 0.88))
 	var ks := cip_stil(); ust_keyif.add_theme_stylebox_override("normal", ks); ust_keyif.add_theme_stylebox_override("hover", ks); ust_keyif.add_theme_stylebox_override("pressed", ks)
-	ust_keyif.set_anchors_preset(Control.PRESET_TOP_RIGHT); ust_keyif.offset_left = -200; ust_keyif.offset_right = -14; ust_keyif.offset_top = 70; ust_keyif.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ust_keyif.set_anchors_preset(Control.PRESET_TOP_RIGHT); ust_keyif.offset_left = -290; ust_keyif.offset_right = -92; ust_keyif.offset_top = 126; ust_keyif.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	ust_keyif.pressed.connect(memnun_ac); cl.add_child(ust_keyif)
 	var ab := Button.new(); ab.icon = load("res://ikon/ayar.svg"); ab.expand_icon = true; ab.custom_minimum_size = Vector2(64, 64)
 	ab.add_theme_stylebox_override("normal", ks); ab.add_theme_stylebox_override("hover", ks); ab.add_theme_stylebox_override("pressed", ks)
@@ -3551,7 +3557,14 @@ func ust_guncelle():
 	ust_etiket.text = "%s%s · %s kişi" % [(ad + " " if ad != "" else ""), asama, noktali(nf)]
 	ust_etiket.add_theme_font_size_override("font_size", 27 if ust_etiket.text.length() <= 22 else (24 if ust_etiket.text.length() <= 25 else 21))
 	ust_lv.text = str(int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1))
-	ust_cip["altin"].text = kisalt(float(res.get("altin", 0))); ust_cip["odun"].text = kisalt(float(res.get("odun", 0))); ust_cip["tas"].text = kisalt(float(res.get("tas", 0))); ust_cip["nufus"].text = kisalt(float(nf))
+	ust_cip["altin"].text = kisalt(float(res.get("altin", 0))); ust_cip["odun"].text = kisalt(float(res.get("odun", 0))); ust_cip["tas"].text = kisalt(float(res.get("tas", 0)))
+	# web k_nufus: çalışan köylü / iş gücü (fazlaysa kırmızı); k_ambar: ambardaki ürünlerin toplamı
+	ust_cip["nufus"].text = "%d/%d" % [int(sonuc.get("isciKul", 0)), int(sonuc.get("yer", 0))]
+	ust_cip["nufus"].add_theme_color_override("font_color", Color(1, 0.55, 0.45) if int(sonuc.get("isciKul", 0)) > int(sonuc.get("yer", 0)) else Color(1, 0.96, 0.88))
+	var et := 0
+	for k in (kayit_v.get("env", {}) as Dictionary): et += int(kayit_v["env"][k])
+	ust_cip["ambar"].text = noktali(et)
+	if ust_xp: ust_xp.value = clamp(float(kayit_v.get("xp", 0) if kayit_v.get("xp") != null else 0) / max(1.0, xp_gerek(klv())), 0.0, 1.0)
 	saat_guncelle()
 func saat_guncelle():
 	if ust_saat == null: return
@@ -3560,6 +3573,7 @@ func saat_guncelle():
 		var p := memnun_puan(); ust_keyif.text = "%s %%%d" % ["Keyif" , int(p)]
 		ust_keyif.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if p >= 60 else (Color(1, 0.96, 0.88) if p >= 40 else Color(1, 0.55, 0.45)))
 var ust_lv: Label
+var ust_xp: ProgressBar
 var ust_saat: Label
 var ust_keyif: Button
 var ust_cip := {}
