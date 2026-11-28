@@ -2643,6 +2643,31 @@ func sahne_kur(id: String, v: Dictionary, yer_ = null, kac_ := 5):
 				var tt := int(arazi_t[zi * WN + xi])
 				if tt != 0 and tt != 4 and not karo_bina.has(zi * WN + xi): kac = p; break
 			inek["sahneP"] = kac; inek["sahneHiz"] = 0.2; yer = kapi_poz(inek["b"]); kac_ = 1
+	var tavuklar := []; var kumes = null; var oto := {}
+	if id == "tavuk":
+		# kümesten üç tavuk en yakın evin bahçesine girer
+		for b in kayit_v["b"]:
+			if b["tip"] == "kumes" and b.get("insa") == null and b.get("hayvan") is Array: kumes = b; break
+		if kumes != null:
+			var m := bina_merkez(kumes); var ev = null; var d := 1e9
+			for b in kayit_v["b"]:
+				if ev_mi(b["tip"]) and b.get("insa") == null:
+					var dd: float = (bina_merkez(b) - m).length_squared()
+					if dd < d: d = dd; ev = b
+			if ev != null:
+				yer = kapi_poz(ev); kac_ = 1
+				for h in hayvanlar:
+					if int(h["bid"]) == int(kumes["id"]) and h.d.visible and tavuklar.size() < 3:
+						h["sahneP"] = yer + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)); h["sahneHiz"] = 0.3; tavuklar.append(h)
+	if id == "gurbetci":
+		# Almancı amcanın arabası köy yollarından gelip meydanda durur
+		var gr := Node3D.new(); add_child(gr); var s := sahne_yukle("oto_m")
+		if s != null:
+			gr.add_child(s); var bas := kamyon_bas(yer); var dur := yer
+			var yi := en_yakin_yol(yer)
+			if yi >= 0 and (karo_poz(yi) - yer).length() < 3: dur = karo_poz(yi)
+			gr.position = bas; oto = {"gr": gr, "yol": yol_rota(bas, dur), "bas": bas}
+		else: gr.queue_free()
 	var aday: Array = koyluler.filter(func(k): return k.get("insaB") == null)
 	aday.sort_custom(func(a, b): return (a.gr.position - yer).length_squared() < (b.gr.position - yer).length_squared())
 	var kat: Array = aday.slice(0, kac_)
@@ -2657,6 +2682,8 @@ func sahne_kur(id: String, v: Dictionary, yer_ = null, kac_ := 5):
 	sahne = {"id": id, "v": v, "yer": yer, "kat": kat, "faz": "bekle", "t": 0.0, "isaret": isr}
 	if _imece_ev != null: sahne["ev"] = _imece_ev; sahne["isk"] = imece_iskele(_imece_ev)
 	if inek != null: sahne["inek"] = inek
+	if not tavuklar.is_empty(): sahne["tavuklar"] = tavuklar; sahne["kumes"] = kumes
+	if not oto.is_empty(): sahne["oto"] = oto
 	if id != "tamir": bildir("Köyde bir şey oluyor: %s. Sarı işarete dokun." % v["b"])
 func sahne_bitir():
 	if sahne.is_empty(): return
@@ -2664,6 +2691,8 @@ func sahne_bitir():
 		k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0; k.bekle = 0.0
 	if is_instance_valid(sahne["isaret"]): sahne["isaret"].queue_free()
 	if sahne.get("isk") != null and is_instance_valid(sahne["isk"]): sahne["isk"].queue_free()
+	for h in sahne.get("tavuklar", []): h.erase("sahneP")
+	if sahne.get("oto") != null and is_instance_valid(sahne["oto"].gr): sahne["oto"].gr.queue_free()
 	if sahne.get("inek") != null:
 		var ik = sahne["inek"]; ik.erase("sahneP")
 		if ik.has("hiz_eski"): ik.hiz = ik["hiz_eski"]; ik.erase("hiz_eski")
@@ -2676,6 +2705,20 @@ func sahne_adim(dt: float):
 	if goc_adim(dt): return
 	var isr: Node3D = sahne["isaret"]
 	if is_instance_valid(isr): isr.get_child(0).position.y = 0.75 + sin(float(sahne["t"]) * 3.0) * 0.05; isr.visible = sahne["faz"] == "bekle"
+	if sahne.get("oto") != null and sahne["id"] == "gurbetci":
+		var o: Dictionary = sahne["oto"]
+		if sahne["faz"] == "git":
+			if kamyon_sur(o, dt, 1.6) or float(sahne["t"]) > 60: sahne_bitir()
+			return
+		kamyon_sur(o, dt, 1.4)
+		if sahne["faz"] == "cozum" and float(sahne["t"]) > 18:
+			sahne["faz"] = "git"; sahne["t"] = 0.0; o["yol"] = yol_rota(o.gr.position, o["bas"])
+			for k in sahne["kat"]: k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0
+			sahne["kat"] = []
+			return
+	if sahne.get("tavuklar") != null and sahne["faz"] == "cozum" and not sahne.get("donus", false) and float(sahne["t"]) > 5:
+		sahne["donus"] = true
+		for h in sahne["tavuklar"]: h.erase("sahneP")
 	var inek = sahne.get("inek")
 	if inek != null:
 		if is_instance_valid(isr): isr.position = inek.d.position
@@ -2709,7 +2752,17 @@ func sahne_zaman():
 		gazete("Sarıkız kaçtı! Kimse peşine düşmeyince Sarıkız dağa vurdu; ahırda bir inek eksik. Birkaç gün sonra kendi döner belki."); bildir("Sarıkız dağa kaçtı, ahırda bir inek eksik")
 		return
 	if sahne["id"] == "inek": yazi = "Kimse peşine düşmeyince Sarıkız kendi kendine ahıra döndü."
-	elif sahne["id"] == "gurbetci": yazi = "Almancı amca meydanda kimseyi bulamadı, hediyeleriyle şehre döndü."; od = {}
+	elif sahne["id"] == "gurbetci":
+		gazete("Almancı amca meydanda kimseyi bulamadı, hediyeleriyle şehre döndü.")
+		if sahne.get("oto") != null:
+			sahne["faz"] = "git"; sahne["t"] = 0.0; sahne["oto"]["yol"] = yol_rota(sahne["oto"].gr.position, sahne["oto"]["bas"])
+			for k in sahne["kat"]: k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0
+			sahne["kat"] = []
+		else: sahne_bitir()
+		return
+	elif sahne["id"] == "tavuk" and sahne.get("kumes") != null:
+		for e in sahne["kumes"]["hayvan"]: e["bit"] = null
+		kayit_yaz_koy(); gazete("Tavuk kavgası: Komşu tavukları süpürgeyle kovaladı; telaşlanan tavuklar bu sefer yumurtlamadı."); sahne_bitir(); return
 	elif sahne["id"] == "imece" and sahne.get("ev") != null:
 		sahne["ev"]["hasar"] = true; hesapla(); kayit_yaz_koy(); hasar_ciz()
 		gazete("Kimse imeceye gelmeyince çatı aktı; ev tamir edilene kadar yarı kapasite."); bildir("Bir evin çatısı aktı, tamir bekliyor")
