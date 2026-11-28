@@ -213,7 +213,7 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 0)
-	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
+	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("hasar_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
 	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
 	web_orman(t)
@@ -1550,6 +1550,9 @@ func ciftlik_eylem(b: Dictionary):
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	isci_eylem(b)
 	if b.get("insa") == null: topla_eylem(b)
+	if b.get("hasar", false) == true and b.get("insa") == null:
+		etiket(eylem_kutu, "Çatı akıyor: içinde yarı yarıya insan kalabiliyor.", 24, Color(0.6, 0.3, 0.05))
+		eylem_dugme("İmeceye çağır · 12 odun", func(): imece_cagir(b))
 	if yangin_bina() == b:
 		etiket(eylem_kutu, "Bina yanıyor! Üretim durdu.", 26, Color(0.75, 0.15, 0.05))
 		if itfaiye_var(): etiket(eylem_kutu, "İtfaiye yolda…", 24)
@@ -2579,6 +2582,7 @@ func sahne_yer(id: String) -> Vector3:
 	var tip_ := {"maya": "mandira", "baytar": "ahir", "yayla": "agil", "mektup": "muhtar", "kahvetv": "kahvehane", "karne": "okul", "telefon": "muhtar", "otobus": "otogar", "inek": "ahir", "tavuk": "kumes"}
 	var b = bul.call(tip_[id]) if tip_.has(id) else null
 	if b == null and id == "otobus": b = bul.call("muhtar")
+	if id == "imece" and _imece_ev != null: b = _imece_ev
 	if b == null and id in ["kizisteme", "imece"]:
 		var ev: Array = kayit_v["b"].filter(func(q): return ev_mi(q["tip"]) and q.get("insa") == null)
 		if not ev.is_empty(): b = ev[randi() % ev.size()]
@@ -2590,7 +2594,16 @@ func sahne_yer(id: String) -> Vector3:
 	if b == null: return Vector3(hedef.x, 0, hedef.z)
 	var kp := kapi_poz(b); var m := bina_merkez(b); var yon := (kp - m); yon.y = 0
 	return kp + (yon.normalized() * 0.45 if yon.length() > 0.01 else Vector3.ZERO)
+var _imece_ev = null
+func imece_iskele(ev: Dictionary) -> Node3D:
+	var d = bina_dugum.get(int(ev["id"]))
+	if d == null or not is_instance_valid(d["kok"]): return null
+	var isk := iskele_yap(BOY.get(ev["tip"], 1)); isk.scale.y = 1.15; d["kok"].add_child(isk); return isk
 func sahne_kur(id: String, v: Dictionary, yer_ = null, kac := 5):
+	_imece_ev = null
+	if id == "imece":
+		var l: Array = kayit_v["b"].filter(func(b): return b["tip"] == "ev" and b.get("insa") == null and b.get("hasar", false) != true and bina_dugum.has(int(b["id"])))
+		if not l.is_empty(): _imece_ev = l[randi() % l.size()]
 	var yer: Vector3 = yer_ if yer_ != null else sahne_yer(id)
 	var aday: Array = koyluler.filter(func(k): return k.get("insaB") == null)
 	aday.sort_custom(func(a, b): return (a.gr.position - yer).length_squared() < (b.gr.position - yer).length_squared())
@@ -2604,12 +2617,16 @@ func sahne_kur(id: String, v: Dictionary, yer_ = null, kac := 5):
 	var l2 := Label3D.new(); l2.text = v["b"]; l2.font_size = 60; l2.outline_size = 16; l2.modulate = Color(1, 0.97, 0.88); l2.outline_modulate = Color(0.25, 0.15, 0.05)
 	l2.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l2.no_depth_test = true; l2.pixel_size = 0.0018; l2.position.y = 0.52; isr.add_child(l2)
 	sahne = {"id": id, "v": v, "yer": yer, "kat": kat, "faz": "bekle", "t": 0.0, "isaret": isr}
-	bildir("Köyde bir şey oluyor: %s. Sarı işarete dokun." % v["b"])
+	if _imece_ev != null: sahne["ev"] = _imece_ev; sahne["isk"] = imece_iskele(_imece_ev)
+	if id != "tamir": bildir("Köyde bir şey oluyor: %s. Sarı işarete dokun." % v["b"])
 func sahne_bitir():
 	if sahne.is_empty(): return
 	for k in sahne["kat"]:
 		k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0; k.bekle = 0.0
 	if is_instance_valid(sahne["isaret"]): sahne["isaret"].queue_free()
+	if sahne.get("isk") != null and is_instance_valid(sahne["isk"]): sahne["isk"].queue_free()
+	if sahne.get("tamir", false) and sahne.get("ev") != null:
+		sahne["ev"].erase("hasar"); hesapla(); kayit_yaz_koy(); hasar_ciz(); gazete("Akan çatı imeceyle onarıldı, ev yine eskisi gibi.")
 	sahne = {}
 func sahne_adim(dt: float):
 	if sahne.is_empty(): return
@@ -2619,13 +2636,19 @@ func sahne_adim(dt: float):
 	if is_instance_valid(isr): isr.get_child(0).position.y = 0.75 + sin(float(sahne["t"]) * 3.0) * 0.05; isr.visible = sahne["faz"] == "bekle"
 	if sahne["faz"] == "bekle":
 		if float(sahne["t"]) > (5.0 if "--sahnezaman" in OS.get_cmdline_user_args() else SAHNE_BEKLE): sahne_zaman(); print("SAHNE ", kayit_v["gazete"][-1])
-	elif float(sahne["t"]) > 20.0: sahne_bitir()
+	elif float(sahne["t"]) > (24.0 if sahne["id"] == "imece" else 20.0): sahne_bitir()
 func sahne_zaman():
 	# kimse dokunmadı: olay kendi seyrinde biter (ilk seçeneğin sonucu, keyif artmadan)
 	var v: Dictionary = sahne["v"]; var s: Array = v["s"][0]; var od: Dictionary = (s[2] as Dictionary).duplicate(); od.erase("mutlu")
 	var yazi := ""
 	if sahne["id"] == "inek": yazi = "Kimse peşine düşmeyince Sarıkız kendi kendine ahıra döndü."
 	elif sahne["id"] == "gurbetci": yazi = "Almancı amca meydanda kimseyi bulamadı, hediyeleriyle şehre döndü."; od = {}
+	elif sahne["id"] == "imece" and sahne.get("ev") != null:
+		sahne["ev"]["hasar"] = true; hesapla(); kayit_yaz_koy(); hasar_ciz()
+		gazete("Kimse imeceye gelmeyince çatı aktı; ev tamir edilene kadar yarı kapasite."); bildir("Bir evin çatısı aktı, tamir bekliyor")
+		var hev: Dictionary = sahne["ev"]; sahne_bitir()
+		if "--tamir" in OS.get_cmdline_user_args(): imece_cagir(hev); print("TAMIR basladi ", sahne.get("faz"), " hasar ", hev.get("hasar"))
+		return
 	else: yazi = s[1]
 	olay_odul(od); gazete(("%s %s" if str(v["b"]).ends_with("!") else "%s: %s") % [v["b"], yazi]); sahne_bitir()
 func sahne_tikla():
@@ -2787,6 +2810,23 @@ func goc_tikla():
 var gelen_aile := 0
 var gelen_k := {}
 var gelen_bekle := 20.0
+var _hasar_kok: Node3D
+func hasar_ciz():
+	# çatısı akan evlerin üstünde küçük “Tamir” işareti
+	if _hasar_kok: _hasar_kok.queue_free()
+	_hasar_kok = Node3D.new(); add_child(_hasar_kok)
+	for b in kayit_v["b"]:
+		if b.get("hasar", false) != true or (sahne.get("ev") == b): continue
+		var l := Label3D.new(); l.text = "Çatı akıyor"; l.font_size = 44; l.outline_size = 12; l.modulate = Color(1, 0.85, 0.5); l.outline_modulate = Color(0.3, 0.15, 0.05)
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true; l.pixel_size = 0.0018; l.position = bina_merkez(b) + Vector3(0, 0.95, 0); _hasar_kok.add_child(l)
+func imece_cagir(b: Dictionary):
+	if not sahne.is_empty(): bildir("Köylüler şu an başka bir işte, biraz sonra"); return
+	if float(kayit_v["res"].get("odun", 0)) < 12: bildir("Tamir için 12 odun lazım"); return
+	kayit_v["res"]["odun"] = float(kayit_v["res"]["odun"]) - 12; ust_guncelle(); bilgi_panel.visible = false
+	var yer := kapi_poz(b)
+	sahne_kur("tamir", {"b": "Çatı tamiri", "m": "", "s": []}, yer, 6)
+	sahne["faz"] = "cozum"; sahne["t"] = 0.0; sahne["ev"] = b; sahne["tamir"] = true; sahne["isk"] = imece_iskele(b); sahne["id"] = "imece"
+	hasar_ciz()
 func gelen_adim(dt: float):
 	if gelen_k.is_empty():
 		gelen_bekle -= dt
