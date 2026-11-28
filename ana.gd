@@ -304,7 +304,7 @@ func hayvan_koy(tip: String, merkez: Vector3, n: int, bid := 0):
 	for i in n:
 		var yer := Vector3(randf_range(-0.55, 0.55), 0.04, randf_range(-0.1, 0.9))
 		var d := model_koy(H[0], merkez + yer, float(H[2]), randf() * TAU)
-		if d: hayvanlar.append({"d": d, "m": merkez, "h": yer, "bekle": randf() * 3, "hiz": float(H[3]), "bid": bid})
+		if d: hayvanlar.append({"d": d, "m": merkez, "h": yer, "bekle": randf() * 3, "hiz": float(H[3]), "bid": bid, "j": i})
 
 var kosH := PackedFloat32Array()
 func dag_kur(t: Array):
@@ -1620,6 +1620,7 @@ func ciftlik_eylem(b: Dictionary):
 		hayvan_hazirla(b)
 		var ac := 0; var uret := 0; var hazir := 0; var t := simdi_ms()
 		for h in b["hayvan"]:
+			if kayip_mi(h): continue
 			if h.get("bit") == null: ac += 1
 			elif float(h["bit"]) <= t: hazir += 1
 			else: uret += 1
@@ -1800,10 +1801,27 @@ func hayvan_hazirla(b: Dictionary):
 	if not b.get("hayvan") is Array: b["hayvan"] = []
 	var n: int = int(H["adet"]) + int(b.get("lv", 1)) - 1
 	while b["hayvan"].size() < n: b["hayvan"].append({"bit": null})
+func kayip_hayvan_adim():
+	# kaçan inek: kayıp süresince ahırda görünmez, süre dolunca kendi döner
+	var bm := {}
+	for b in kayit_v["b"]:
+		if b.get("hayvan") is Array: bm[int(b["id"])] = b
+	var t := simdi_ms()
+	for h in hayvanlar:
+		var b = bm.get(int(h.get("bid", 0)))
+		if b == null or int(h.get("j", 0)) >= b["hayvan"].size(): continue
+		var e: Dictionary = b["hayvan"][int(h["j"])]
+		if e.get("kayip") == null: continue
+		if float(e["kayip"]) > t:
+			if not h.has("sahneP"): h.d.visible = false
+		else:
+			e.erase("kayip"); h.d.visible = true; h.d.position = h.m + Vector3(0, 0.04, 0.4)
+			gazete("Kaçan inek kendi kendine ahıra döndü, köylüler sevindi."); kayit_yaz_koy()
+func kayip_mi(h: Dictionary) -> bool: return float(h.get("kayip", 0) if h.get("kayip") != null else 0) > simdi_ms()
 func besle(b: Dictionary):
 	var H: Dictionary = VERI["hayvan"][b["tip"]]; var env: Dictionary = kayit_v.get("env", {})
 	for h in b["hayvan"]:
-		if h.get("bit") != null: continue
+		if h.get("bit") != null or kayip_mi(h): continue
 		if int(env.get(H["yem"], 0)) < 1: break
 		env_ekle(H["yem"], -1); h["bit"] = simdi_ms() + float(H["sure"]) * 1000.0
 	kayit_yaz_koy(); bina_goster(b)
@@ -1888,7 +1906,7 @@ func oto_uretim():
 		elif VERI["hayvan"].has(t) and b.get("hayvan") is Array:
 			var H: Dictionary = VERI["hayvan"][t]
 			for h in b["hayvan"]:
-				if h.get("bit") != null or sahip(H["yem"]) - 1 < yedek.call(H["yem"]): continue
+				if h.get("bit") != null or kayip_mi(h) or sahip(H["yem"]) - 1 < yedek.call(H["yem"]): continue
 				harca(H["yem"], 1); h["bit"] = simdi_ms() + float(H["sure"]) * 1000.0; degisti = true
 	if degisti: kayit_yaz_koy()
 func ambar_ac():
@@ -2599,15 +2617,35 @@ func imece_iskele(ev: Dictionary) -> Node3D:
 	var d = bina_dugum.get(int(ev["id"]))
 	if d == null or not is_instance_valid(d["kok"]): return null
 	var isk := iskele_yap(BOY.get(ev["tip"], 1)); isk.scale.y = 1.15; d["kok"].add_child(isk); return isk
-func sahne_kur(id: String, v: Dictionary, yer_ = null, kac := 5):
+func sahne_kur(id: String, v: Dictionary, yer_ = null, kac_ := 5):
 	_imece_ev = null
 	if id == "imece":
 		var l: Array = kayit_v["b"].filter(func(b): return b["tip"] == "ev" and b.get("insa") == null and b.get("hasar", false) != true and bina_dugum.has(int(b["id"])))
 		if not l.is_empty(): _imece_ev = l[randi() % l.size()]
 	var yer: Vector3 = yer_ if yer_ != null else sahne_yer(id)
+	var inek = null
+	if id == "inek":
+		# ahırdan bir inek kaçar: dağa doğru 6 kare öteye yürür
+		var ahirlar: Array = kayit_v["b"].filter(func(b): return b["tip"] == "ahir" and b.get("insa") == null and b.get("hayvan") is Array)
+		ahirlar.shuffle()
+		for b in ahirlar:
+			for h in hayvanlar:
+				if int(h["bid"]) != int(b["id"]) or not h.d.visible or h.has("sahneP"): continue
+				var hv: Array = b["hayvan"]
+				if int(h["j"]) < hv.size() and kayip_mi(hv[int(h["j"])]): continue
+				inek = h; inek["b"] = b; break
+			if inek != null: break
+		if inek != null:
+			var m := bina_merkez(inek["b"]); var kac := m
+			for dene in 12:
+				var aa := randf() * TAU; var p := m + Vector3(cos(aa), 0, sin(aa)) * 6.0; var xi := int(floor(p.x + YARI)); var zi := int(floor(p.z + YARI))
+				if xi < 0 or zi < 0 or xi >= WN or zi >= WN: continue
+				var tt := int(arazi_t[zi * WN + xi])
+				if tt != 0 and tt != 4 and not karo_bina.has(zi * WN + xi): kac = p; break
+			inek["sahneP"] = kac; inek["sahneHiz"] = 0.2; yer = kapi_poz(inek["b"]); kac_ = 1
 	var aday: Array = koyluler.filter(func(k): return k.get("insaB") == null)
 	aday.sort_custom(func(a, b): return (a.gr.position - yer).length_squared() < (b.gr.position - yer).length_squared())
-	var kat: Array = aday.slice(0, kac)
+	var kat: Array = aday.slice(0, kac_)
 	for i in kat.size():
 		var k: Dictionary = kat[i]; oduncu_birak(k); var a: float = TAU * i / max(1, kat.size()) + randf() * 0.4
 		k["sahneH"] = yer + Vector3(cos(a), 0, sin(a)) * 0.5; k["sahneM"] = yer
@@ -2618,6 +2656,7 @@ func sahne_kur(id: String, v: Dictionary, yer_ = null, kac := 5):
 	l2.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l2.no_depth_test = true; l2.pixel_size = 0.0018; l2.position.y = 0.52; isr.add_child(l2)
 	sahne = {"id": id, "v": v, "yer": yer, "kat": kat, "faz": "bekle", "t": 0.0, "isaret": isr}
 	if _imece_ev != null: sahne["ev"] = _imece_ev; sahne["isk"] = imece_iskele(_imece_ev)
+	if inek != null: sahne["inek"] = inek
 	if id != "tamir": bildir("Köyde bir şey oluyor: %s. Sarı işarete dokun." % v["b"])
 func sahne_bitir():
 	if sahne.is_empty(): return
@@ -2625,6 +2664,9 @@ func sahne_bitir():
 		k.erase("sahneH"); k.erase("sahneM"); k.ust.rotation.x = 0; k.bekle = 0.0
 	if is_instance_valid(sahne["isaret"]): sahne["isaret"].queue_free()
 	if sahne.get("isk") != null and is_instance_valid(sahne["isk"]): sahne["isk"].queue_free()
+	if sahne.get("inek") != null:
+		var ik = sahne["inek"]; ik.erase("sahneP")
+		if ik.has("hiz_eski"): ik.hiz = ik["hiz_eski"]; ik.erase("hiz_eski")
 	if sahne.get("tamir", false) and sahne.get("ev") != null:
 		sahne["ev"].erase("hasar"); hesapla(); kayit_yaz_koy(); hasar_ciz(); gazete("Akan çatı imeceyle onarıldı, ev yine eskisi gibi.")
 	sahne = {}
@@ -2634,6 +2676,24 @@ func sahne_adim(dt: float):
 	if goc_adim(dt): return
 	var isr: Node3D = sahne["isaret"]
 	if is_instance_valid(isr): isr.get_child(0).position.y = 0.75 + sin(float(sahne["t"]) * 3.0) * 0.05; isr.visible = sahne["faz"] == "bekle"
+	var inek = sahne.get("inek")
+	if inek != null:
+		if is_instance_valid(isr): isr.position = inek.d.position
+		if "--olay=inek" in OS.get_cmdline_user_args(): hedef = inek.d.position; kamera_guncelle()
+		if sahne["faz"] == "bekle":
+			# kovalayan köylü ineğin ardından gider
+			for k in sahne["kat"]: k["sahneH"] = inek.d.position + Vector3(0.25, 0, 0.25); k["sahneM"] = inek.d.position
+		elif sahne["faz"] == "kacti":
+			var f2: Vector3 = inek.sahneP - inek.d.position; f2.y = 0
+			if f2.length() < 0.1 or float(sahne["t"]) > 40:
+				inek.d.visible = false; var hv: Array = inek["b"]["hayvan"]
+				if int(inek["j"]) < hv.size(): hv[int(inek["j"])]["kayip"] = simdi_ms() + 3 * GUN_SN_W * 1000.0; hv[int(inek["j"])]["bit"] = null
+				inek.erase("sahneP"); kayit_yaz_koy(); sahne_bitir()
+				if "--sahnezaman" in OS.get_cmdline_user_args(): print("INEK kayip ", hv[int(inek["j"])])
+			return
+		elif sahne["faz"] == "cozum" and not sahne.get("donus", false) and float(sahne["t"]) > 7:
+			sahne["donus"] = true; inek.erase("sahneP"); inek.d.position = inek.d.position  # ağılına döner (normal dolaşma hedefi)
+			inek["hiz_eski"] = inek.hiz; inek.hiz = 0.24
 	if sahne["faz"] == "bekle":
 		if float(sahne["t"]) > (5.0 if "--sahnezaman" in OS.get_cmdline_user_args() else SAHNE_BEKLE): sahne_zaman(); print("SAHNE ", kayit_v["gazete"][-1])
 	elif float(sahne["t"]) > (24.0 if sahne["id"] == "imece" else 20.0): sahne_bitir()
@@ -2641,6 +2701,13 @@ func sahne_zaman():
 	# kimse dokunmadı: olay kendi seyrinde biter (ilk seçeneğin sonucu, keyif artmadan)
 	var v: Dictionary = sahne["v"]; var s: Array = v["s"][0]; var od: Dictionary = (s[2] as Dictionary).duplicate(); od.erase("mutlu")
 	var yazi := ""
+	if sahne["id"] == "inek" and sahne.get("inek") != null:
+		var ik = sahne["inek"]; ik["sahneP"] = ik.d.position + (ik.sahneP - bina_merkez(ik["b"])) * 0.6; ik["sahneHiz"] = 0.25
+		sahne["faz"] = "kacti"; sahne["t"] = 0.0
+		for k in sahne["kat"]: k.erase("sahneH"); k.erase("sahneM")
+		sahne["kat"] = []
+		gazete("Sarıkız kaçtı! Kimse peşine düşmeyince Sarıkız dağa vurdu; ahırda bir inek eksik. Birkaç gün sonra kendi döner belki."); bildir("Sarıkız dağa kaçtı, ahırda bir inek eksik")
+		return
 	if sahne["id"] == "inek": yazi = "Kimse peşine düşmeyince Sarıkız kendi kendine ahıra döndü."
 	elif sahne["id"] == "gurbetci": yazi = "Almancı amca meydanda kimseyi bulamadı, hediyeleriyle şehre döndü."; od = {}
 	elif sahne["id"] == "imece" and sahne.get("ev") != null:
@@ -3272,7 +3339,7 @@ func rehber_adaylar() -> Array:
 			l.append({"k": "hy%d" % int(b["id"]), "m": "%s ürün hazır (süt, yumurta…), topla." % BINA_BILGI[b["tip"]]["ad"], "d": "Git", "f": func(): bina_odak(bb)}); break
 	for b in kayit_v["b"]:
 		var bb = b
-		if VERI["hayvan"].has(b["tip"]) and b.get("insa") == null and b.get("hayvan", []).any(func(h): return h.get("bit") == null) and sahip(VERI["hayvan"][b["tip"]]["yem"]) > 0:
+		if VERI["hayvan"].has(b["tip"]) and b.get("insa") == null and b.get("hayvan", []).any(func(h): return h.get("bit") == null and not kayip_mi(h)) and sahip(VERI["hayvan"][b["tip"]]["yem"]) > 0:
 			l.append({"k": "ac%d" % int(b["id"]), "m": "%s hayvanlar aç. Besle ki ürün versin." % BINA_BILGI[b["tip"]]["ad"], "d": "Besle", "f": func(): bina_odak(bb)}); break
 	var bos := tl.filter(func(b): return not b.get("ekin") is Dictionary)
 	var b0 = bos[0] if bos.size() > 0 else null
@@ -3721,7 +3788,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); kayip_hayvan_adim(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim()
 			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
@@ -3745,6 +3812,11 @@ func _process(dt):
 	for h in hayvanlar:
 		h.bekle -= dt
 		var d: Node3D = h.d
+		if h.has("sahneP"):
+			var f2: Vector3 = h.sahneP - d.position; f2.y = 0
+			if f2.length() > 0.05:
+				d.position += f2.normalized() * min(f2.length(), float(h.sahneHiz) * dt); d.rotation.y = lerp_angle(d.rotation.y, atan2(f2.x, f2.z), dt * 5)
+			continue
 		var hedef_d: Vector3 = h.m + h.h
 		var fark := hedef_d - d.position; fark.y = 0
 		if h.bekle > 0: continue
