@@ -1795,7 +1795,7 @@ func ciftlik_eylem(b: Dictionary):
 	var klv := int(kayit_v.get("lv", 1) if kayit_v.get("lv") != null else 1)
 	if b["tip"] in YOL_TIP: yol_eylem(b, klv); return
 	isci_eylem(b)
-	if b.get("insa") == null: topla_eylem(b)
+	if b.get("insa") == null: topla_eylem(b); bina_bilgi(b)
 	if b.get("hasar", false) == true and b.get("insa") == null:
 		etiket(eylem_kutu, "Çatı akıyor: içinde yarı yarıya insan kalabiliyor.", 24, Color(0.6, 0.3, 0.05))
 		eylem_dugme("İmeceye çağır · 12 odun", func(): imece_cagir(b))
@@ -2400,6 +2400,57 @@ func memnun_ac():
 	if m["eksik"].size() > 0:
 		etiket(liste, "Kurarsan sevinirler:", 26, Color(0.25, 0.17, 0.1))
 		for e in m["eksik"]: etiket(liste, "  %s (+%d)" % [e[2], int(e[1])], 24)
+# web panelGuncelle: binaya göre bilgi satırları
+func bina_bilgi(b: Dictionary):
+	var t: String = b["tip"]; var d: Dictionary = durum.get(int(b["id"]), {}); var bb: Dictionary = BINA_BILGI.get(t, {})
+	var yaz := func(s: String): etiket(eylem_kutu, s, 24, Color(0.25, 0.17, 0.1))
+	if bb.get("isci", false) and calisan(b) == 0: etiket(eylem_kutu, "Çalışan yok: işçi ekle ya da ev kur.", 24, Color(0.7, 0.2, 0.1))
+	if t == "ambar":
+		var et := 0
+		for k in (kayit_v.get("env", {}) as Dictionary): et += int(kayit_v["env"][k])
+		yaz.call("Ambarda %s ürün · sınırsız" % noktali(et)); eylem_dugme("Ambarı aç", func(): bilgi_panel.visible = false; ambar_ac())
+	if t == "oduncu":
+		yaz.call("%d/%d oduncu çalışıyor · 7 kare çevrede %d ağaç" % [calisan(b), int(b.get("lv", 1)), int(d.get("agac", 0))])
+		yaz.call("Her ağaç %d odun getirir. Kesilen yerin kütüğü çürür, kıyıda fidan biter." % (12 + 3 * int(b.get("lv", 1))))
+	elif bb.has("uret") and calisan(b) > 0:
+		var r: String = bb["uret"].keys()[0]
+		yaz.call("Üretim: +%.1f %s/dk · %d %s yakında" % [float(d.get("hiz", 0)) * 60, "odun" if r == "odun" else "taş", int(d.get("komsu", 0)), "ağaç" if int(bb.get("komsu", 0)) == 2 else "kaya"])
+	if t in ["gunes", "ruzgar"]: yaz.call("Köyün enerji geliri: %.1f altın/dk%s" % [enerji_geliri(), " (gece panel üretmez)" if t == "gunes" and enerji_geliri() == 0 else ""])
+	if t == "hamam":
+		var kalan := (4 - gun_no() % 7 + 7) % 7
+		yaz.call("Hamam günü: Cuma (16:00–18:00) · %s" % ("bugün hamam günü!" if kalan == 0 else "%d gün sonra" % kalan))
+	if t == "karakol": yaz.call(("Polis arabası asfalt yollarda devriyede." if sayi_tam("asfalt") >= 4 else "Devriye için en az 4 kare asfalt yol lazım.") + " Turist geliri %20 arttı.")
+	if t in ["bayi", "kooperatif", "dayibasi"]:
+		var td := tarim_durum()
+		if int(td["elle"]) > 0:
+			yaz.call("Tarım: tarlalarda %d kişi çalışıyor." % int(td["simdi"]))
+			if int(td["serbest"]) > 0: yaz.call("Makineler %d kişinin işini yapıyor: %s%s" % [int(td["serbest"]), ("%d kişi fabrika ve atölyelerde" % int(td["fabrikada"])) if int(td["fabrikada"]) > 0 else "fabrika ve atölye yok", (", %d kişi işsiz" % int(td["issiz"])) if int(td["issiz"]) > 0 else ""])
+	if t == "muhtar":
+		var gz: Array = (kayit_v.get("gazete", []) as Array).slice(-5); gz.reverse()
+		if not gz.is_empty():
+			yaz.call("Son haberler:")
+			for g in gz: etiket(eylem_kutu, "• " + emoji_sil(str(g["m"])), 22, Color(0.4, 0.32, 0.24))
+		yaz.call("Vefat eden köylü sayısı: %d" % int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0))
+	if t == "muhasebe":
+		var v := vergi_geliri() * 1.2; var tu := turist_geliri() * 1.2; var en := enerji_geliri() * 1.2
+		var soz: String = ["Hesap kitap tamam, içiniz rahat olsun.", "Vergiyi zamanında yatırdık, cezaya girmedik.", "Bu ay kâr güzel, devam böyle.", "Fiş kesmeyen esnafa uyarı yaptık.", "Beyannameler hazır, imzaya bekliyorum."][gun_no() % 5]
+		yaz.call("SMMM Bedri Ulaş: “%s”" % soz)
+		yaz.call("Vergi %.1f · Turizm %.1f · Enerji %.1f altın/dk" % [v, tu, en]); yaz.call("Toplam: %.1f altın/dk (müşavir katkısı +%.1f)" % [v + tu + en, (v + tu + en) / 6.0])
+	if t == "besi":
+		var n := 0
+		for q in kayit_v["b"]:
+			if q["tip"] == "ahir" and q.get("insa") == null and abs(int(q["x"]) - int(b["x"])) <= 5 and abs(int(q["z"]) - int(b["z"])) <= 5: n += 1
+		yaz.call(("%d ahırın inekleri gündüz burada besleniyor, süt %%30 hızlı." % n) if n > 0 else "Yakında ahır yok: ahırın en çok 4 kare yakınına kur.")
+	if t == "otogar": yaz.call("Turistler köyde dakikada %.1f altın harcıyor. Köy mutlu oldukça artar (keyif %%%d)." % [turist_geliri(), int(memnun_puan())])
+	if t in ["okul", "lise"]:
+		var og: Array = (kayit_v.get("nufus", []) as Array).filter(func(k): return yas(k) >= (6 if t == "okul" else 14) and yas(k) < YETISKIN_YAS)
+		yaz.call(("Öğrenci: %d" % og.size()) + (" · atölyeler %8 hızlı" if t == "lise" else ""))
+	if t == "saglik": yaz.call("Doktor köylülere bakıyor: yaşlılar çok daha uzun yaşıyor, vefatlar yarıya indi.")
+	if t == "sifa": yaz.call("Şifa evi sayesinde köyün yaşlıları daha uzun yaşıyor.")
+	if t == "mezarlik":
+		var l: Array = kayit_v.get("mezarlar", []) if kayit_v.get("mezarlar") is Array else []
+		yaz.call(("Burada yatanlar: " + ", ".join(l.slice(-8).map(func(x): return str(x.get("ad", ""))))) if not l.is_empty() else "Henüz kimse defnedilmedi.")
+	if t == "pazar": eylem_dugme("Siparişleri aç", func(): bilgi_panel.visible = false; siparis_ac())
 func isci_eylem(b: Dictionary):
 	var bb: Dictionary = BINA_BILGI.get(b["tip"], {})
 	if b.get("insa") != null: return

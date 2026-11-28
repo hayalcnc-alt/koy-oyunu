@@ -32,6 +32,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Kış web gibi: zemin bembeyaz karla örtülür, kiremit çatılar beyazlaşır, ot ve çiçekler karın altında kalır
 - [x] Dere web gibi kıvrımlı: dere karolarından Chaikin ile yumuşatılmış eğri, çevresi oyulmuş eğimli yatak (yeşilden toprağa geçen renk), su yatağın içinde; kıyıdaki ağaçlar yatağa oturur, yatakta ot çıkmaz
 - [x] Dere suyu web irmakMat gibi: koyu turkuaz, akış yönünde kayan dalgacıklar ve ince parlak çizgiler; derenin başında dağdan dökülen akan şelale şeridi ve dibinde köpük (web selaleYap)
+- [x] Bina paneli bilgi satırları (web panelGuncelle): çalışan yok uyarısı, ambar toplamı + Ambarı aç, oduncu/ocak üretim hızı ve yakın ağaç-kaya, enerji geliri, hamam günü, karakol devriyesi, tarım durumu (bayi/kooperatif/dayıbaşı), muhtarlıkta son haberler ve vefat sayısı, muhasebe raporu, besi alanı, otogar turist geliri, okul/lise öğrenci sayısı, sağlık/şifa, mezarlıkta yatanlar, pazarda Siparişleri aç
 - [x] Köy keyfi (web memnuniyet: hizmetler, kapasite oranı, lamba/yol/bahçe, bayram, kış/kuraklık/fırtına, kalabalık, vergi), keyif çipi + nedenler paneli, keyfe göre toplama hızı; enerji (güneş/rüzgâr), turist, vergi geliri, belediye kasası ve vergi kademesi seçimi
 
 ## Eksik (önem sırasıyla)
