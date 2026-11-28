@@ -31,6 +31,7 @@ Godot'ya geçiş ancak bu listenin tamamı [x] olunca ve kullanıcı onaylayınc
 - [x] Gece web gibi: ay ışığı tepeden ve daha güçlü vurur (gölgeli, mavimsi), renkler solar (yeşiller parlamaz)
 - [x] Kış web gibi: zemin bembeyaz karla örtülür, kiremit çatılar beyazlaşır, ot ve çiçekler karın altında kalır
 - [x] Dere web gibi kıvrımlı: dere karolarından Chaikin ile yumuşatılmış eğri, çevresi oyulmuş eğimli yatak (yeşilden toprağa geçen renk), su yatağın içinde; kıyıdaki ağaçlar yatağa oturur, yatakta ot çıkmaz
+- [x] Dere suyu web irmakMat gibi: koyu turkuaz, akış yönünde kayan dalgacıklar ve ince parlak çizgiler; derenin başında dağdan dökülen akan şelale şeridi ve dibinde köpük (web selaleYap)
 - [x] Köy keyfi (web memnuniyet: hizmetler, kapasite oranı, lamba/yol/bahçe, bayram, kış/kuraklık/fırtına, kalabalık, vergi), keyif çipi + nedenler paneli, keyfe göre toplama hızı; enerji (güneş/rüzgâr), turist, vergi geliri, belediye kasası ve vergi kademesi seçimi
 
 ## Eksik (önem sırasıyla)

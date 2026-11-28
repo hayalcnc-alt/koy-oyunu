@@ -170,14 +170,17 @@ func web_kaydi_ciz(ad: String):
 					kum_st.set_normal(Vector3.UP); kum_st.add_vertex(Vector3(cx, 0, cz) + p)
 	# dere: dere karolarında akan su (web: -0.13, denize komşuysa -0.2)
 	var d_st := SurfaceTool.new(); d_st.begin(Mesh.PRIMITIVE_TRIANGLES); var dere_var := false
+	var yon_m := irmak_yon(v)
+	call_deferred("selale_yap", v)
 	for z in WN:
 		for x in WN:
 			if int(t[z * WN + x]) != 4: continue
 			dere_var = true
 			var dy := -0.13  # web irmakMeshYap: su yüzeyi yatağın içinde, kıyı eğimiyle kesişir
 			var cx := x + 0.5 - YARI; var cz := z + 0.5 - YARI
+			var ay: Vector2 = yon_m.get(z * WN + x, Vector2.ZERO); var ac := Color(ay.x * 0.5 + 0.5, ay.y * 0.5 + 0.5, 0)  # akış yönü renkte
 			for p in [Vector3(-0.51, 0, -0.51), Vector3(0.51, 0, -0.51), Vector3(-0.51, 0, 0.51), Vector3(0.51, 0, -0.51), Vector3(0.51, 0, 0.51), Vector3(-0.51, 0, 0.51)]:
-				d_st.set_normal(Vector3.UP); d_st.add_vertex(Vector3(cx, dy, cz) + p)
+				d_st.set_normal(Vector3.UP); d_st.set_color(ac); d_st.add_vertex(Vector3(cx, dy, cz) + p)
 	if dere_var:
 		var dm := MeshInstance3D.new(); dm.mesh = d_st.commit(); add_child(dm)
 		var dmt := ShaderMaterial.new(); dmt.shader = load("res://dere.gdshader"); dm.material_override = dmt
@@ -402,6 +405,53 @@ func irmak_egri_kur(v: Dictionary):
 		var c := Vector2.ZERO
 		for i in g + [l[0]]: c += Vector2(int(i) % WN + 0.5 - YARI, int(i) / WN + 0.5 - YARI)
 		c /= g.size() + 1; irmak_golet = {"c": c, "r": 0.75 + sqrt(g.size()) * 0.32}
+func selale_yap(v: Dictionary):
+	# web selaleYap: derenin başında dağdan dökülen akan su şeridi, dibinde köpük
+	var ir = v.get("irmak")
+	if not ir is Dictionary or not ir.get("selale") is Dictionary: return
+	var s: Dictionary = ir["selale"]; if int(s.get("dag", -1)) < 0: return
+	var A := karo_poz(int(s["i"])); var B := karo_poz(int(s["dag"])); var yon := (B - A).normalized(); var yan := Vector3(-yon.z, 0, yon.x)
+	var son := 2
+	for k in range(2, 7):
+		var q := A + yon * k; var xi := int(floor(q.x + YARI)); var zi := int(floor(q.z + YARI))
+		if xi < 0 or zi < 0 or xi >= WN or zi >= WN or int(arazi_t[zi * WN + xi]) != 5: break
+		son = k
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES); const ADIM := 18; var pts := []
+	for k in ADIM + 1:
+		var f := float(k) / ADIM; var q := A + yon * (0.15 + f * son)
+		var y: float = max(-0.12, yerY(q.x, q.z) + 0.08); var w := 0.34 + 0.16 * (1.0 - f)
+		pts.append([Vector3(q.x, y, q.z) - yan * w, Vector3(q.x, y, q.z) + yan * w, f * 3.0])
+	for k in ADIM:
+		var a0: Array = pts[k]; var a1: Array = pts[k + 1]
+		for e in [[a0[0], 0, a0[2]], [a0[1], 1, a0[2]], [a1[0], 0, a1[2]], [a0[1], 1, a0[2]], [a1[1], 1, a1[2]], [a1[0], 0, a1[2]]]:
+			st.set_uv(Vector2(e[1], e[2])); st.add_vertex(e[0])
+	var img := Image.create(64, 256, false, Image.FORMAT_RGBA8); img.fill(Color(205 / 255.0, 228 / 255.0, 232 / 255.0, 0.8))
+	var rng := RandomNumberGenerator.new(); rng.seed = 7
+	for i in 90:
+		var x := rng.randi() % 64; var y0 := rng.randi() % 256; var h := 20 + rng.randi() % 60
+		for yy in h:
+			var al: float = 1.0 - abs(float(yy) / h - 0.5) * 2.0
+			for xx in range(x, min(64, x + 2)):
+				var py := (y0 + yy) % 256; var c := img.get_pixel(xx, py); img.set_pixel(xx, py, c.lerp(Color(1, 1, 1, 1), al * 0.9))
+	var sm := ShaderMaterial.new(); sm.shader = load("res://selale.gdshader"); sm.set_shader_parameter("doku", ImageTexture.create_from_image(img))
+	var mi := MeshInstance3D.new(); mi.mesh = st.commit(); mi.material_override = sm; mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; add_child(mi)
+	var kp := CPUParticles3D.new(); add_child(kp); kp.position = A + yon * 0.2 + Vector3(0, -0.05, 0)
+	var q2 := QuadMesh.new(); q2.size = Vector2.ONE * 0.12; var pm := StandardMaterial3D.new(); pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; pm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES; pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; pm.vertex_color_use_as_albedo = true
+	var gt := GradientTexture2D.new(); gt.fill = GradientTexture2D.FILL_RADIAL; gt.fill_from = Vector2(0.5, 0.5); gt.fill_to = Vector2(1, 0.5); var gg := Gradient.new(); gg.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)]); gt.gradient = gg; pm.albedo_texture = gt; q2.material = pm; kp.mesh = q2
+	kp.amount = 16; kp.lifetime = 0.9; kp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX; kp.emission_box_extents = Vector3(0.25, 0, 0.25); kp.direction = Vector3.UP; kp.spread = 40; kp.initial_velocity_min = 0.5; kp.initial_velocity_max = 0.9; kp.gravity = Vector3(0, -1.2, 0)
+	var g2 := Gradient.new(); g2.colors = PackedColorArray([Color(0.96, 0.98, 0.99, 0.9), Color(0.96, 0.98, 0.99, 0)]); kp.color_ramp = g2
+func irmak_yon(v: Dictionary) -> Dictionary:
+	# web irmakYon: her dere karesinin akış yönü (bir sonrakine doğru)
+	var y := {}; var ir = v.get("irmak")
+	if not ir is Dictionary or not ir.get("yol") is Array: return y
+	var l: Array = ir["yol"]
+	for k in l.size():
+		var A := int(l[k]); var B := int(l[min(l.size() - 1, k + 1)]); var P := int(l[max(0, k - 1)])
+		var d := Vector2(B % WN - A % WN, B / WN - A / WN)
+		if k == l.size() - 1: d = Vector2(A % WN - P % WN, A / WN - P / WN)
+		y[A] = d.normalized() if d.length() > 0 else Vector2.ZERO
+	for i in (ir.get("golet", []) if ir.get("golet") is Array else []): y[int(i)] = y.get(int(l[0]), Vector2.ZERO)
+	return y
 func irmak_mesafe(wx: float, wz: float) -> float:
 	var en := 9.0
 	var k = irmak_kova.get(int(floor(wz + YARI)) * WN + int(floor(wx + YARI)))
