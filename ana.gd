@@ -820,7 +820,7 @@ func mevsim_adim():
 		kayit_v["sonHava"] = hv
 	var gece := gece_oran()
 	if cim_mt:
-		var c := cim_renk.lerp(Color(0.42, 0.44, 0.46) * cim_renk, kis).lerp(Color.html("#e0b070") * cim_renk * 1.6, guz * 0.6)
+		var c := cim_renk.lerp(Color(0.86, 0.89, 0.93), kis).lerp(Color.html("#e0b070") * cim_renk * 1.6, guz * 0.6)  # kışın web gibi bembeyaz kar
 		if hv == "kuraklik": c = c.lerp(Color.html("#d8b060") * 0.7, 0.45)
 		cim_mt.albedo_color = c
 		cim_mt.emission_enabled = kis > 0.01; cim_mt.emission = Color.html("#dfe6ec"); cim_mt.emission_energy_multiplier = kis * 0.62 * (1.0 - gece * 0.85)
@@ -829,9 +829,12 @@ func mevsim_adim():
 			var km: StandardMaterial3D = _malz[hx]
 			if not km.has_meta("kar"): km.set_meta("kar", true)
 			km.emission_enabled = kis > 0.01 or km.emission_enabled; km.emission = Color.html("#dfe6ec"); km.emission_energy_multiplier = kis * 0.35 * (1.0 - gece * 0.85)
+			if not km.has_meta("asil"): km.set_meta("asil", km.albedo_color)
+			km.albedo_color = (km.get_meta("asil") as Color).lerp(Color(0.9, 0.92, 0.95), kis * 0.85)  # çatılar karla örtülür
 	for mt in yaprak_mt:
 		var a: Color = yaprak_mt[mt]
 		mt.albedo_color = a.lerp(Color.html("#ff9a3c") * 0.8, guz * 0.85).lerp(Color(0.85, 0.87, 0.9), kis * 0.8)
+	get_tree().call_group("kar_alti", "set_visible", kis < 0.5)
 	var saat_no := int(floor(simdi_ms() / 1000.0 / (GUN_SN_W / 24.0)))
 	yagis_tur = "kar" if kis > 0.5 else ("yagmur" if (hv == "firtina" or ((float(m["bahar"]) > 0.5 or guz > 0.5) and rnd(saat_no, 7) < 0.3)) else "")
 	firtina = hv == "firtina"
@@ -962,6 +965,7 @@ func web_orman(t: Array):
 		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = cm[key.z]; mm.instance_count = p.size()
 		for j in p.size(): mm.set_instance_transform(j, p[j][0]); mm.set_instance_color(j, p[j][1])
 		var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm; mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if key.z != 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if key.z != 2: mmi.add_to_group("kar_alti")  # ot ve çiçek kışın karın altında kalır
 		orman_kok.add_child(mmi)
 	cim_ekle = []
 
