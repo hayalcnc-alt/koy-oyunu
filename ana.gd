@@ -2013,7 +2013,7 @@ func hazirla_hepsi():
 	for b in kayit_v.get("b", []): if b.get("insa") == null: bina_hazirla(b)
 func oto_topla():
 	var n_top := 0
-	for b in kayit_v.get("b", []):
+	for b in (kayit_v.get("b", []) if kayit_v.get("otoTopla") != false else []):
 		if b["tip"] != "tarla" or b.get("insa") != null or b.get("otoKapali", false) == true: continue
 		if not b.get("ekin") is Dictionary or ekin_asama(b) != 2: continue
 		var tip: String = b["ekin"]["tip"]; env_ekle(tip, 2); b["ekin"] = null; n_top += 1
@@ -2401,6 +2401,108 @@ func memnun_ac():
 		etiket(liste, "Kurarsan sevinirler:", 26, Color(0.25, 0.17, 0.1))
 		for e in m["eksik"]: etiket(liste, "  %s (+%d)" % [e[2], int(e[1])], 24)
 # web panelGuncelle: binaya göre bilgi satırları
+# --- dayıbaşı (web dayiAdim/dayiPlan/dayiSec/dayiPanel): olgun tarlaları biçer, boşlara ekin eker, gerekirse ağaç/kaya işaretler; tarla başına yevmiye
+const YEVMIYE := 2
+var _dayi_z := 0
+func dayi_ayar() -> Dictionary:
+	if not kayit_v.get("dayi") is Dictionary: kayit_v["dayi"] = {"ekin": "oto", "acik": true, "orman": true}
+	return kayit_v["dayi"]
+func dayi_plan() -> Dictionary:
+	var p := {}
+	for k in VERI["ekin"]:
+		if int(VERI["ekin"][k].get("lv", 1)) <= klv(): p[k] = float(sahip(k))
+	for b in kayit_v["b"]:
+		if b["tip"] == "tarla" and b.get("ekin") is Dictionary and p.has(b["ekin"]["tip"]): p[b["ekin"]["tip"]] += 2
+	for sp in kayit_v.get("siparis", []):
+		for k in sp["istek"]:
+			if p.has(k): p[k] -= float(sp["istek"][k]) * 1.5
+	return p
+func dayi_sec(p: Dictionary) -> String:
+	var en := "bugday"; var d := INF
+	for k in p:
+		var v: float = p[k] + (-4.0 if k == "bugday" else 0.0)
+		if v < d: d = v; en = k
+	return en
+func dayi_adim():
+	_dayi_z += 1
+	if _dayi_z < 3: return
+	_dayi_z = 0
+	var dbb = null
+	for q in kayit_v["b"]:
+		if q["tip"] == "dayibasi" and q.get("insa") == null: dbb = q; break
+	if dbb == null: return
+	var h := oyun_saati(); if h < 6.5 or h > 20: return
+	var ayar := dayi_ayar(); if ayar.get("acik") != true: return
+	var hasat := 0; var ekim := 0
+	for b in kayit_v["b"]:
+		if b["tip"] != "tarla" or b.get("insa") != null: continue
+		if b.get("ekin") is Dictionary and ekin_asama(b) == 2:
+			var k: String = b["ekin"]["tip"]; env_ekle(k, 2); xp_ekle(float(VERI["urun"].get(k, {}).get("xp", 0)) * 2); b["ekin"] = null; ekin_yenile(b); hasat += 1
+			kayit_v["res"]["altin"] = max(0.0, float(kayit_v["res"]["altin"]) - (1 if bina_var("muhasebe") else YEVMIYE))
+			if hasat >= 3: break
+	var sabit: String = ayar["ekin"] if VERI["ekin"].has(ayar.get("ekin")) and int(VERI["ekin"][ayar["ekin"]].get("lv", 1)) <= klv() else ""
+	var plan := {} if sabit != "" else dayi_plan()
+	for b in kayit_v["b"]:
+		if ekim >= 3: break
+		if b["tip"] == "tarla" and b.get("insa") == null and not b.get("ekin") is Dictionary:
+			var tip := sabit if sabit != "" else dayi_sec(plan)
+			if not ek(b, tip): break
+			if sabit == "": plan[tip] = float(plan.get(tip, 0)) + 2
+			ekin_yenile(b); ekim += 1
+	if ayar.get("orman") == true and randf() < 0.15 and (kayit_v.get("kesim", {}) if kayit_v.get("kesim") is Dictionary else {}).size() < 2:
+		var m := bina_merkez(dbb); var cx := int(round(m.x + YARI)); var cz := int(round(m.z + YARI))
+		var istek := 2 if float(kayit_v["res"]["odun"]) < float(kayit_v["res"]["tas"]) else 3
+		for r in range(2, 13):
+			var bul := -1
+			for dz in range(-r, r + 1):
+				for dx in range(-r, r + 1):
+					var x := cx + dx; var z := cz + dz
+					if x < 0 or z < 0 or x >= WN or z >= WN: continue
+					var i := z * WN + x
+					if int(arazi_t[i]) == istek and karo_acik(i) and not (kayit_v.get("kesim", {}) as Dictionary).has(str(i)) and not agac_rezerve.has(i): bul = i; break
+				if bul >= 0: break
+			if bul >= 0:
+				if not kayit_v.get("kesim") is Dictionary: kayit_v["kesim"] = {}
+				kayit_v["kesim"][str(bul)] = 1; isaret_ciz(); break
+	if hasat > 0 or ekim > 0:
+		if hasat > 0: ses("kes")
+		ust_guncelle(); kayit_yaz_koy()
+func dayi_panel(b: Dictionary):
+	var ayar := dayi_ayar(); var tl: Array = kayit_v["b"].filter(func(q): return q["tip"] == "tarla")
+	var olgun := tl.filter(func(q): return q.get("ekin") is Dictionary and ekin_asama(q) == 2).size(); var bos := tl.filter(func(q): return not q.get("ekin") is Dictionary).size()
+	etiket(eylem_kutu, "Dayıbaşı %s · %d tarla (%d olgun, %d boş)" % ["işbaşında" if ayar.get("acik") == true else "izinde", tl.size(), olgun, bos], 24, Color(0.25, 0.17, 0.1))
+	var ob := OptionButton.new(); ob.add_theme_font_size_override("font_size", 24); ob.custom_minimum_size = Vector2(0, 56)
+	ob.add_item("Ambara göre (ne azsa onu eker)"); ob.set_item_metadata(0, "oto")
+	var l: Array = VERI["ekin"].keys().filter(func(k): return int(VERI["ekin"][k].get("lv", 1)) <= klv())
+	l.sort_custom(func(x, y): return int(VERI["ekin"][x]["lv"]) < int(VERI["ekin"][y]["lv"]))
+	for k in l: ob.add_item(urun_ad(k)); ob.set_item_metadata(ob.item_count - 1, k)
+	for i in ob.item_count:
+		if ob.get_item_metadata(i) == ayar.get("ekin", "oto"): ob.select(i)
+	ob.item_selected.connect(func(i): ayar["ekin"] = ob.get_item_metadata(i); kayit_yaz_koy(); bina_goster(b))
+	etiket(eylem_kutu, "Boş tarlalara ekilecek:", 22); eylem_kutu.add_child(ob)
+	if ayar.get("ekin", "oto") == "oto": etiket(eylem_kutu, "Sıradaki ekim: %s (ambarda en az olan)" % urun_ad(dayi_sec(dayi_plan())), 22, Color(0.4, 0.32, 0.24))
+	etiket(eylem_kutu, "Her biçilen tarla için %d altın yevmiye alır. Gece çalışmaz." % (1 if bina_var("muhasebe") else YEVMIYE), 22, Color(0.4, 0.32, 0.24))
+	eylem_dugme("İşi durdur" if ayar.get("acik") == true else "İşe başlat", func(): ayar["acik"] = not (ayar.get("acik") == true); kayit_yaz_koy(); bina_goster(b))
+	eylem_dugme("Orman/taş işi: %s" % ("açık" if ayar.get("orman") == true else "kapalı"), func(): ayar["orman"] = not (ayar.get("orman") == true); kayit_yaz_koy(); bina_goster(b))
+func secim_adim():
+	# web secimAdim: köyde muhtarı köylüler kendi arasında belirler (en yaşlı 40-80 yaş erkek), 30 günde bir
+	kayit_v.erase("secim")
+	if kasaba_mi() or not bina_var("muhtar") or nufus_say() < 80: return
+	var g0 := gun_no(); var mh = kayit_v.get("muhtar")
+	if mh is Dictionary and mh.get("bitis") != null and g0 < int(mh["bitis"]): return
+	var l: Array = (kayit_v.get("nufus", []) as Array).filter(func(k): return k["cins"] == "e" and yas(k) >= 40 and yas(k) < 80 and not k.get("asker") is Dictionary)
+	if l.is_empty(): return
+	l.sort_custom(func(x, y): return yas(x) > yas(y))
+	var ad: Dictionary = l[0]; var yeni: bool = not mh is Dictionary or mh.get("id") != ad["id"]
+	kayit_v["muhtar"] = {"id": ad["id"], "ad": ad["ad"], "vaat": mh.get("vaat", "") if mh is Dictionary else "", "bitis": g0 + 30}
+	if yeni: gazete("Köyün büyükleri toplandı, %s muhtar oldu." % ad["ad"])
+	kayit_yaz_koy()
+func nufus_ozet() -> Array:
+	var l: Array = kayit_v.get("nufus", []); var say := {"bebek": 0, "cocuk": 0, "yetiskin": 0, "yasli": 0}
+	for k in l:
+		var y := yas(k); say["bebek" if y < 3 else ("cocuk" if y < YETISKIN_YAS else ("yetiskin" if y < YASLI_YAS else "yasli"))] += 1
+	var s: Array = l.duplicate(); s.sort_custom(func(x, y): return float(x["dogum"]) > float(y["dogum"]))
+	return ["Nüfus kütüğü — %d kişi: %d bebek · %d çocuk · %d yetişkin · %d yaşlı" % [l.size(), say["bebek"], say["cocuk"], say["yetiskin"], say["yasli"]], ", ".join(s.slice(0, 40).map(func(k): return "%s (%d)" % [k["ad"], yas(k)]))]
 func bina_bilgi(b: Dictionary):
 	var t: String = b["tip"]; var d: Dictionary = durum.get(int(b["id"]), {}); var bb: Dictionary = BINA_BILGI.get(t, {})
 	var yaz := func(s: String): etiket(eylem_kutu, s, 24, Color(0.25, 0.17, 0.1))
@@ -2420,17 +2522,30 @@ func bina_bilgi(b: Dictionary):
 		var kalan := (4 - gun_no() % 7 + 7) % 7
 		yaz.call("Hamam günü: Cuma (16:00–18:00) · %s" % ("bugün hamam günü!" if kalan == 0 else "%d gün sonra" % kalan))
 	if t == "karakol": yaz.call(("Polis arabası asfalt yollarda devriyede." if sayi_tam("asfalt") >= 4 else "Devriye için en az 4 kare asfalt yol lazım.") + " Turist geliri %20 arttı.")
+	if t == "dayibasi": dayi_panel(b)
+	if t in ["benzinlik", "atcilik"]:
+		var kp: Array = kayit_v.get("kp", []) if kayit_v.get("kp") is Array else []
+		if t == "benzinlik": yaz.call("Traktörü olan köylü: %d · motoru ya da arabası olan: %d" % [kp.filter(func(x): return x is Dictionary and x.get("traktor")).size(), kp.filter(func(x): return x is Dictionary and (x.get("binek") == "motor" or x.get("oto"))).size()])
+		else: yaz.call("Atı olan köylü: %d. Köylüler çalıştıkça para biriktirip buradan at alır." % kp.filter(func(x): return x is Dictionary and x.get("at")).size())
 	if t in ["bayi", "kooperatif", "dayibasi"]:
 		var td := tarim_durum()
 		if int(td["elle"]) > 0:
 			yaz.call("Tarım: tarlalarda %d kişi çalışıyor." % int(td["simdi"]))
 			if int(td["serbest"]) > 0: yaz.call("Makineler %d kişinin işini yapıyor: %s%s" % [int(td["serbest"]), ("%d kişi fabrika ve atölyelerde" % int(td["fabrikada"])) if int(td["fabrikada"]) > 0 else "fabrika ve atölye yok", (", %d kişi işsiz" % int(td["issiz"])) if int(td["issiz"]) > 0 else ""])
 	if t == "muhtar":
+		var mh = kayit_v.get("muhtar")
+		if mh is Dictionary: yaz.call("Muhtar: %s · sonraki seçim %d gün sonra" % [mh.get("ad", ""), max(0, int(mh.get("bitis", 0)) - gun_no())])
+		elif not kasaba_mi(): yaz.call("Nüfus 80 olunca köy ilk muhtarını seçecek." if nufus_say() < 80 else "Seçim yakında yapılacak.")
 		var gz: Array = (kayit_v.get("gazete", []) as Array).slice(-5); gz.reverse()
 		if not gz.is_empty():
 			yaz.call("Son haberler:")
 			for g in gz: etiket(eylem_kutu, "• " + emoji_sil(str(g["m"])), 22, Color(0.4, 0.32, 0.24))
-		yaz.call("Vefat eden köylü sayısı: %d" % int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0))
+		var no := nufus_ozet(); yaz.call(no[0]); etiket(eylem_kutu, no[1], 20, Color(0.4, 0.32, 0.24))
+		var kk := int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0)
+		yaz.call("Vefat eden ya da askerdeki köylü sayısı: %d" % kk)
+		if kk > 0: eylem_dugme("Yeni köylü al (150 altın)", func():
+			if float(kayit_v["res"]["altin"]) < 150: bildir("Köylü almak için 150 altın lazım"); return
+			kayit_v["res"]["altin"] = float(kayit_v["res"]["altin"]) - 150; kayit_v["kayip"] = int(kayit_v["kayip"]) - 1; hesapla(); ust_guncelle(); kayit_yaz_koy(); bildir("Köye yeni bir köylü katıldı!"); bina_goster(b))
 	if t == "muhasebe":
 		var v := vergi_geliri() * 1.2; var tu := turist_geliri() * 1.2; var en := enerji_geliri() * 1.2
 		var soz: String = ["Hesap kitap tamam, içiniz rahat olsun.", "Vergiyi zamanında yatırdık, cezaya girmedik.", "Bu ay kâr güzel, devam böyle.", "Fiş kesmeyen esnafa uyarı yaptık.", "Beyannameler hazır, imzaya bekliyorum."][gun_no() % 5]
@@ -4225,8 +4340,8 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
-			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim()
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); dayi_adim(); olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim(); secim_adim()
 			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
 			if _halk_say == 3 and "--rehber" in OS.get_cmdline_user_args(): print("REHBER ", rehber_adaylar().map(func(x): return x["k"]))
