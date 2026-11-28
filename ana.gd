@@ -47,6 +47,8 @@ var kayit_adi := "ornek"
 var hedef_arg := Vector3.ZERO
 
 func _ready():
+	for a_ in OS.get_cmdline_user_args():
+		if a_.begins_with("--binektest="): _bt_ad = a_.substr(12); _bt_on = true
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--ekran="): ekran_yolu = a.substr(8)
 		if a.begins_with("--dokun="): var q = a.substr(8).split(","); dokun_arg = Vector2(float(q[0]), float(q[1]))
@@ -751,9 +753,49 @@ func koylu_ayarla():
 func kapi_poz(b: Dictionary) -> Vector3:
 	var s: float = BOY.get(b["tip"], 1); var a: float = int(b.get("rot", 0)) * PI / 2; var d := s / 2 + 0.15; var m := bina_merkez(b)
 	return Vector3(m.x + sin(a) * d, 0, m.z + cos(a) * d)
+# web: köylü uzak yola bineğiyle gider — bisiklet/motosiklet (esnaf), traktör (çiftçi)
+var _binek_s := {}
+var _bt_k = null
+var _bt_ad := "bisiklet"
+var _bt_on := false
+func binek_node(k: Dictionary, ad: String) -> Node3D:
+	if k.get("binekAd") == ad and is_instance_valid(k.get("binekN")): return k["binekN"]
+	if is_instance_valid(k.get("binekN")): k["binekN"].queue_free()
+	var n := Node3D.new(); add_child(n); var s := sahne_yukle(ad)
+	if s: s.scale = Vector3.ONE * (0.62 if ad == "traktor" else 0.33); s.rotation.y = PI; n.add_child(s)
+	n.visible = false; k["binekN"] = n; k["binekAd"] = ad; return n
+func binek_in(k: Dictionary):
+	if is_instance_valid(k.get("binekN")) and k["binekN"].visible:
+		k["binekN"].visible = false; k.bL.rotation = Vector3.ZERO; k.bR.rotation = Vector3.ZERO; k.gr.position.y = 0; k.ust.rotation.x = 0
 func koylu_yuru(k: Dictionary, h: Vector3, dt: float) -> bool:
 	var gr: Node3D = k.gr; var f: Vector3 = h - gr.position; f.y = 0
-	if f.length() < 0.04: return true
+	if f.length() < 0.04: binek_in(k); return true
+	var kp_ = kayit_v.get("kp"); var ki := koyluler.find(k)
+	if kp_ is Array and ki >= 0 and ki < kp_.size() and kp_[ki] is Dictionary and not k.get("yasli", false):
+		var x: Dictionary = kp_[ki]; var ad := ""
+		if x.get("traktor") and f.length() > 2.5: ad = "traktor"
+		elif x.get("binek") != null and f.length() > 2.0: ad = "motosiklet" if x["binek"] == "motor" else "bisiklet"
+		elif is_instance_valid(k.get("binekN")) and k["binekN"].visible and f.length() > 0.3: ad = k["binekAd"]
+		if ad != "":
+			var n := binek_node(k, ad); n.visible = gr.visible
+			if _bt_on and (_bt_k == null or _bt_k == k) and ad == _bt_ad:
+				if _bt_k == null: print("BINEK ", ad)
+				_bt_k = k; hedef = gr.position; kamera_guncelle()
+			var hiz: float = float(k.hiz) * (2.8 if ad == "traktor" else (3.2 if ad == "motosiklet" else 2.0)) * 1.6
+			var p: Vector3 = Vector3(gr.position.x, 0, gr.position.z) + f.normalized() * min(f.length(), hiz * dt)
+			n.rotation.y = lerp_angle(n.rotation.y, atan2(f.x, f.z), dt * 7); var ry := n.rotation.y
+			n.position = p; gr.rotation.y = ry
+			if ad == "traktor":
+				gr.position = p - Vector3(sin(ry), 0, cos(ry)) * 0.16 + Vector3(0, 0.17, 0)
+				k.bL.rotation = Vector3(-1.45, 0, 0.12); k.bR.rotation = Vector3(-1.45, 0, -0.12); k.kL.rotation.x = -1.1; k.kR.rotation.x = -1.1
+			else:
+				gr.position = p - Vector3(sin(ry), 0, cos(ry)) * 0.02 + Vector3(0, -0.035 if ad == "motosiklet" else -0.03, 0)
+				if ad == "motosiklet": k.bL.rotation = Vector3(-1.0, 0, 0.25); k.bR.rotation = Vector3(-1.0, 0, -0.25)
+				else:
+					k.faz += dt * 9.0; var sp := sin(k.faz); k.bL.rotation = Vector3(-0.9 + sp * 0.45, 0, 0.05); k.bR.rotation = Vector3(-0.9 - sp * 0.45, 0, -0.05)
+				k.kL.rotation.x = -1.0; k.kR.rotation.x = -1.0; k.ust.rotation.x = 0.15 if ad == "motosiklet" else 0.25
+			return false
+	binek_in(k)
 	gr.position += f.normalized() * min(f.length(), float(k.hiz) * 1.6 * dt); gr.rotation.y = lerp_angle(gr.rotation.y, atan2(f.x, f.z), dt * 8)
 	k.faz += dt * 9.0; var sl := sin(k.faz) * 0.5
 	k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8; k.ust.rotation.x = 0
