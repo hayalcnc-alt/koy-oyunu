@@ -729,6 +729,8 @@ func koylu_ayarla():
 	while koyluler.size() < istenen and not _yollar.is_empty(): koylu_ekle()
 	while koyluler.size() > istenen:
 		var k: Dictionary = koyluler.pop_back(); oduncu_birak(k); k.gr.queue_free()
+		for nn in [k.get("binekN"), k.get("arabaN"), (k["at"].gr if k.has("at") else null)]:
+			if is_instance_valid(nn): nn.queue_free()
 	var slotlar := []; var mesai := mesaide()
 	for b in kayit_v.get("b", []):
 		var c := calisan(b)
@@ -767,12 +769,77 @@ func binek_node(k: Dictionary, ad: String) -> Node3D:
 func binek_in(k: Dictionary):
 	if is_instance_valid(k.get("binekN")) and k["binekN"].visible:
 		k["binekN"].visible = false; k.bL.rotation = Vector3.ZERO; k.bR.rotation = Vector3.ZERO; k.gr.position.y = 0; k.ust.rotation.x = 0
+# web atYap: kutulardan at (gövde, boyun, baş, yele, kulak, eyer; 4 bacak ve kuyruk sallanır)
+var _at_mat := {}
+func _at_m(h: String) -> StandardMaterial3D:
+	if not _at_mat.has(h): var m := StandardMaterial3D.new(); m.albedo_color = Color.html(h); m.roughness = 0.9; _at_mat[h] = m
+	return _at_mat[h]
+func _at_kutu(ata: Node3D, s: Vector3, renk: String, p: Vector3, rx := 0.0) -> MeshInstance3D:
+	var mi := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = s; mi.mesh = bm; mi.material_override = _at_m(renk); mi.position = p; mi.rotation.x = rx; ata.add_child(mi); return mi
+func at_yap() -> Dictionary:
+	var renk := "#7a4a2a"; var yele := "#2a1a10"
+	var gr := Node3D.new(); add_child(gr)
+	_at_kutu(gr, Vector3(0.09, 0.09, 0.26), renk, Vector3(0, 0.17, 0))
+	_at_kutu(gr, Vector3(0.05, 0.14, 0.06), renk, Vector3(0, 0.245, 0.13), 0.55)
+	_at_kutu(gr, Vector3(0.045, 0.05, 0.11), renk, Vector3(0, 0.3, 0.19), 0.35)
+	_at_kutu(gr, Vector3(0.012, 0.1, 0.03), yele, Vector3(0, 0.27, 0.1), 0.55)
+	for x in [-0.015, 0.015]: _at_kutu(gr, Vector3(0.012, 0.025, 0.012), renk, Vector3(x, 0.335, 0.16))
+	_at_kutu(gr, Vector3(0.1, 0.02, 0.1), "#5a2a1a", Vector3(0, 0.225, -0.01))
+	var ayak := []
+	for xz in [[-0.03, 0.1], [0.03, 0.1], [-0.03, -0.1], [0.03, -0.1]]:
+		var ay := Node3D.new(); ay.position = Vector3(xz[0], 0.135, xz[1]); gr.add_child(ay)
+		_at_kutu(ay, Vector3(0.022, 0.13, 0.022), renk, Vector3(0, -0.065, 0)); _at_kutu(ay, Vector3(0.024, 0.02, 0.026), "#1a1410", Vector3(0, -0.13, 0)); ayak.append(ay)
+	var ku := Node3D.new(); ku.position = Vector3(0, 0.2, -0.13); ku.rotation.x = 0.4; gr.add_child(ku); _at_kutu(ku, Vector3(0.015, 0.1, 0.015), yele, Vector3(0, -0.05, 0))
+	gr.scale = Vector3.ONE * 1.25; gr.visible = false
+	return {"gr": gr, "ayak": ayak, "kuyruk": ku, "faz": randf() * 6}
+func at_adim(at: Dictionary, dt: float, kosu: bool):
+	at.faz += dt * (14.0 if kosu else 3.0)
+	var of := [0.0, PI, PI * 0.5, PI * 1.5]
+	for j in 4:
+		var ay: Node3D = at.ayak[j]; ay.rotation.x = sin(at.faz + of[j]) * 0.6 if kosu else ay.rotation.x * 0.85
+	at.kuyruk.rotation.y = sin(Time.get_ticks_msec() * 0.003 + at.faz) * 0.3
+func at_in(k: Dictionary):
+	if k.has("at") and k.at.gr.visible:
+		k.at.gr.visible = false; k.bL.rotation = Vector3.ZERO; k.bR.rotation = Vector3.ZERO; k.gr.position.y = 0; k.ust.rotation.x = 0
+		if is_instance_valid(k.get("arabaN")): k["arabaN"].visible = false
+var _atcilik_var := false
+func koylu_atla(k: Dictionary, x: Dictionary, f: Vector3, dt: float) -> bool:
+	# web atlı köylü: atçılık varken uzak yola atla gider; ailenin at arabası varsa arabanın oturağında dizgin tutar
+	if not x.get("at") or not _atcilik_var: return false
+	var gidiyor: bool = k.has("at") and k.at.gr.visible
+	if not (f.length() > 2.5 or (gidiyor and f.length() > 0.03)): return false
+	if not k.has("at"): k["at"] = at_yap()
+	var at: Dictionary = k.at; var gr: Node3D = k.gr
+	if not at.gr.visible: at.gr.position = Vector3(gr.position.x, 0, gr.position.z); at.gr.rotation.y = atan2(f.x, f.z)
+	at.gr.visible = gr.visible
+	var p: Vector3 = at.gr.position + f.normalized() * min(f.length(), float(k.hiz) * 2.3 * 1.6 * dt)
+	at.gr.rotation.y = lerp_angle(at.gr.rotation.y, atan2(f.x, f.z), dt * 8); at.gr.position = p; at_adim(at, dt, true)
+	var ry: float = at.gr.rotation.y; gr.rotation.y = ry; var fw := Vector3(sin(ry), 0, cos(ry))
+	if x.get("araba"):
+		if not is_instance_valid(k.get("arabaN")):
+			var n := Node3D.new(); add_child(n); var s := sahne_yukle("araba")
+			if s: s.scale = Vector3.ONE * 0.95; s.rotation.y = PI; n.add_child(s)
+			k["arabaN"] = n
+		var an: Node3D = k.arabaN; an.visible = gr.visible; an.position = p - fw * 0.29; an.rotation.y = ry
+		gr.position = an.position + Vector3(0, 0.22 + abs(sin(at.faz * 0.5)) * 0.006, 0)
+		k.bL.rotation = Vector3(-1.45, 0, 0.1); k.bR.rotation = Vector3(-1.45, 0, -0.1); k.kL.rotation.x = -1.0; k.kR.rotation.x = -1.0
+	else:
+		if is_instance_valid(k.get("arabaN")): k["arabaN"].visible = false
+		gr.position = p + Vector3(0, 0.2 + abs(sin(at.faz)) * 0.012, 0)
+		k.bL.rotation = Vector3(-1.2, 0, 0.35); k.bR.rotation = Vector3(-1.2, 0, -0.35); k.kL.rotation.x = -0.7; k.kR.rotation.x = -0.7
+	k.ust.rotation.x = 0.05
+	if _bt_on and _bt_ad == ("araba" if x.get("araba") else "at") and (_bt_k == null or _bt_k == k):
+		if _bt_k == null: print("BINEK ", _bt_ad)
+		_bt_k = k; hedef = p; kamera_guncelle()
+	return true
 func koylu_yuru(k: Dictionary, h: Vector3, dt: float) -> bool:
 	var gr: Node3D = k.gr; var f: Vector3 = h - gr.position; f.y = 0
-	if f.length() < 0.04: binek_in(k); return true
+	if f.length() < 0.04: binek_in(k); at_in(k); return true
 	var kp_ = kayit_v.get("kp"); var ki := koyluler.find(k)
 	if kp_ is Array and ki >= 0 and ki < kp_.size() and kp_[ki] is Dictionary and not k.get("yasli", false):
 		var x: Dictionary = kp_[ki]; var ad := ""
+		if koylu_atla(k, x, f, dt): return false
+		at_in(k)
 		if x.get("traktor") and f.length() > 2.5: ad = "traktor"
 		elif x.get("binek") != null and f.length() > 2.0: ad = "motosiklet" if x["binek"] == "motor" else "bisiklet"
 		elif is_instance_valid(k.get("binekN")) and k["binekN"].visible and f.length() > 0.3: ad = k["binekAd"]
@@ -795,7 +862,7 @@ func koylu_yuru(k: Dictionary, h: Vector3, dt: float) -> bool:
 					k.faz += dt * 9.0; var sp := sin(k.faz); k.bL.rotation = Vector3(-0.9 + sp * 0.45, 0, 0.05); k.bR.rotation = Vector3(-0.9 - sp * 0.45, 0, -0.05)
 				k.kL.rotation.x = -1.0; k.kR.rotation.x = -1.0; k.ust.rotation.x = 0.15 if ad == "motosiklet" else 0.25
 			return false
-	binek_in(k)
+	binek_in(k); at_in(k)
 	gr.position += f.normalized() * min(f.length(), float(k.hiz) * 1.6 * dt); gr.rotation.y = lerp_angle(gr.rotation.y, atan2(f.x, f.z), dt * 8)
 	k.faz += dt * 9.0; var sl := sin(k.faz) * 0.5
 	k.bL.rotation.x = sl; k.bR.rotation.x = -sl; k.kL.rotation.x = -sl * 0.8; k.kR.rotation.x = sl * 0.8; k.ust.rotation.x = 0
@@ -834,7 +901,8 @@ func tarlaci_yenile():
 	# kamera başka tarlalara gidince çapa yapan köylüler de oraya geçer (yalnız kameraya yakın tarlalar canlandırılır)
 	if Vector2(hedef.x - _tarlaci_merkez.x, hedef.z - _tarlaci_merkez.z).length() < 8 or kayit_v.is_empty(): return
 	for k in tarlacilar: k.gr.queue_free()
-	tarlacilar.clear(); tarlaci_koy(kayit_v["b"], 48); cubuk_guncelle()
+	for o in makineler: o.kap.queue_free()
+	makineler.clear(); tarlacilar.clear(); tarlaci_koy(kayit_v["b"], 48); cubuk_guncelle()
 func tarlaci_koy(bl: Array, n: int):
 	_tarlaci_merkez = hedef
 	var l := []
@@ -842,22 +910,154 @@ func tarlaci_koy(bl: Array, n: int):
 		if b["tip"] in ["tarla", "bahce"] and b.get("insa") == null: l.append(b)
 	l.sort_custom(func(a, b): return Vector2(a["x"] - YARI, a["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)) < Vector2(b["x"] - YARI, b["z"] - YARI).distance_squared_to(Vector2(hedef.x, hedef.z)))
 	var sap := StandardMaterial3D.new(); sap.albedo_color = Color.html("#7a5532"); var dmr := StandardMaterial3D.new(); dmr.albedo_color = Color.html("#8f9aa3"); dmr.metallic = 0.3
-	for k: int in range(min(n, l.size() * 3)):
-		var b: Dictionary = l[k / 3]
-		var kadin: bool = k % 2 == 1
-		var ad: String = ("k" if kadin else "e") + str((k * 3 + 1) % 4)
-		if donem_kip != "" and randf() < 0.3: ad += donem_kip
-		var ins := insan_yap(ad)
-		var capa := Node3D.new(); ins.kR.add_child(capa); capa.position = Vector3(0, -0.11, 0.02); capa.rotation.x = 1.2
-		var c1 := MeshInstance3D.new(); var m1 := BoxMesh.new(); m1.size = Vector3(0.012, 0.012, 0.16); c1.mesh = m1; c1.material_override = sap; c1.position.z = 0.05; capa.add_child(c1)
-		var c2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.05, 0.035, 0.008); c2.mesh = m2; c2.material_override = dmr; c2.position = Vector3(0, -0.015, 0.13); capa.add_child(c2)
-		var mrk := Vector3(int(b["x"]) + 0.5 - YARI, 0, int(b["z"]) + 0.5 - YARI)
-		add_child(ins.gr); ins["m"] = mrk
-		ins.gr.position = mrk + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)); ins.gr.rotation.y = randf() * TAU
-		ins["faz"] = randf() * TAU; ins["hiz"] = randf_range(2.6, 3.4); ins["sure"] = randf_range(4, 9); ins["hedef"] = ins.gr.position
-		ins["b"] = b
-		if k % 3 == 0 and b["tip"] == "tarla": ins["cubuk"] = cubuk_yap(ins.gr)
-		tarlacilar.append(ins)
+	var td := tarim_durum(); var kad: Dictionary = td.get("kademe", {}); var koop: bool = td.get("koop", false)
+	var k := 0
+	for b in l:
+		if k >= n: break
+		var L: int = int(kad.get(int(b["id"]), 0)) if b["tip"] == "tarla" else 0
+		var kisi: int = min(3, TARIM_KISI[L] + (1 if koop and L > 0 else 0))
+		var mrk := Vector3(int(b["x"]) + 0.5 - YARI, TOPRAK_Y if b["tip"] == "tarla" else 0.0, int(b["z"]) + 0.5 - YARI)
+		if L > 0: makine_kur(b, L, mrk)
+		for j in kisi:
+			if k >= n: break
+			if L > 0 and j == 0: continue  # birinci kişi makineyi sürer
+			var kadin: bool = k % 2 == 1
+			var ad: String = ("k" if kadin else "e") + str((k * 3 + 1) % 4)
+			if donem_kip != "" and randf() < 0.3: ad += donem_kip
+			var ins := insan_yap(ad)
+			ins.kR.add_child(capa_yap(sap, dmr))
+			add_child(ins.gr); ins["m"] = mrk
+			ins.gr.position = mrk + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)); ins.gr.rotation.y = randf() * TAU
+			ins["faz"] = randf() * TAU; ins["hiz"] = randf_range(2.6, 3.4); ins["sure"] = randf_range(4, 9); ins["hedef"] = ins.gr.position
+			ins["b"] = b
+			if j == (1 if L > 0 else 0) and b["tip"] == "tarla": ins["cubuk"] = cubuk_yap(ins.gr)
+			tarlacilar.append(ins); k += 1
+func capa_yap(sap: Material, dmr: Material) -> Node3D:
+	var capa := Node3D.new(); capa.position = Vector3(0, -0.11, 0.02); capa.rotation.x = 1.2
+	var c1 := MeshInstance3D.new(); var m1 := BoxMesh.new(); m1.size = Vector3(0.012, 0.012, 0.16); c1.mesh = m1; c1.material_override = sap; c1.position.z = 0.05; capa.add_child(c1)
+	var c2 := MeshInstance3D.new(); var m2 := BoxMesh.new(); m2.size = Vector3(0.05, 0.035, 0.008); c2.mesh = m2; c2.material_override = dmr; c2.position = Vector3(0, -0.015, 0.13); capa.add_child(c2)
+	return capa
+# --- web tarlaIsci makineli sürüm: karasaban/pulluk (köylü yürür, saban önünde) ya da traktör (arkasında pulluk) tarlayı üç sıra gidiş-dönüşle sürer, arkada sürülmüş toprak izi kalır
+var makineler := []
+var _iz_mat: StandardMaterial3D
+const SURUM_SIRA := [-0.24, 0.0, 0.24]
+const SURUM_Z := 0.26
+const SURUM_R := 0.12
+func surum_boy() -> float: return SURUM_SIRA.size() * 2 * SURUM_Z + (SURUM_SIRA.size() - 1) * PI * SURUM_R
+func surum_nokta(s: float, ters: bool) -> Dictionary:
+	if ters: s = surum_boy() - s
+	var L := 2 * SURUM_Z; var D := PI * SURUM_R; var n := SURUM_SIRA.size()
+	for i in n:
+		var yon := -1.0 if i % 2 else 1.0
+		if s <= L: return {"u": -yon * SURUM_Z + yon * s, "v": SURUM_SIRA[i], "sira": i, "ic": s / L, "donus": false}
+		s -= L
+		if i < n - 1:
+			if s <= D:
+				var aa := s / SURUM_R; var cv: float = (SURUM_SIRA[i] + SURUM_SIRA[i + 1]) / 2.0
+				return {"u": yon * SURUM_Z + yon * sin(aa) * SURUM_R, "v": cv - cos(aa) * SURUM_R, "sira": i, "ic": 1.0, "donus": true}
+			s -= D
+	var son := n - 1; return {"u": (-1.0 if son % 2 else 1.0) * SURUM_Z, "v": SURUM_SIRA[son], "sira": son, "ic": 1.0, "donus": false}
+func makine_kur(b: Dictionary, L: int, m: Vector3):
+	if _iz_mat == null: _iz_mat = StandardMaterial3D.new(); _iz_mat.albedo_color = Color.html("#4a2c18"); _iz_mat.roughness = 1.0
+	var o := {"b": b, "L": L, "m": m, "s": randf() * surum_boy() * 0.5, "ters": randf() < 0.5, "zEks": int(b.get("rot", 0)) % 2 == 0, "iz": [], "ry": null}
+	var kap := Node3D.new(); add_child(kap); o["kap"] = kap
+	for v in SURUM_SIRA:
+		var z := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(1, 0.012, 0.21); z.mesh = bm; z.material_override = _iz_mat; z.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if o.zEks: z.rotation.y = PI / 2; z.position = Vector3(m.x + v, TOPRAK_Y + 0.006, m.z)
+		else: z.position = Vector3(m.x, TOPRAK_Y + 0.006, m.z + v)
+		z.visible = false; kap.add_child(z); o.iz.append(z)
+	var r := insan_yap("e" + str(randi() % 4)); o["r"] = r
+	if L == 3:
+		var tr := Node3D.new(); kap.add_child(tr); var s := sahne_yukle("traktor")
+		if s: s.scale = Vector3.ONE * 0.62; s.rotation.y = PI; tr.add_child(s)
+		tr.add_child(r.gr); r.gr.position = Vector3(0, 0.17, -0.16)
+		r.bL.rotation = Vector3(-1.45, 0, 0.12); r.bR.rotation = Vector3(-1.45, 0, -0.12); r.kL.rotation.x = -1.1; r.kR.rotation.x = -1.1
+		var pl := sahne_yukle("pulluk")
+		if pl: pl.scale = Vector3.ONE * 0.5; pl.rotation.y = PI; pl.position = Vector3(0, 0, -0.5); tr.add_child(pl)
+		o["tr"] = tr
+	else:
+		kap.add_child(r.gr)
+		var sb := Node3D.new(); kap.add_child(sb); var s := sahne_yukle("pulluk" if L >= 2 else "karasaban")
+		if s: s.scale = Vector3.ONE * 0.6; s.rotation.y = PI; sb.add_child(s)
+		o["sb"] = sb
+	makineler.append(o)
+const TOPRAK_Y := 0.072
+func makine_adim(dt: float):
+	var t := Time.get_ticks_msec() * 0.001
+	for o in makineler:
+		var b: Dictionary = o.b; var kap: Node3D = o.kap
+		var sur: bool = not b.get("ekin") is Dictionary or ekin_asama(b) == 0
+		kap.visible = sur
+		if not sur: continue
+		var boy := surum_boy(); o.s += dt * (0.16 if o.L == 3 else 0.05)
+		if o.s >= boy + 0.5:
+			o.s = 0.0; o.ters = not o.ters
+			for z in o.iz: z.visible = false
+		var s: float = min(o.s, boy); var p := surum_nokta(s, o.ters); var q := surum_nokta(min(boy, s + 0.02), o.ters)
+		var du: float = q.u - p.u; var dv: float = q.v - p.v
+		var ry: float = atan2(dv, du) if o.zEks else atan2(du, dv)
+		if o.ry == null: o.ry = ry
+		if s < boy: o.ry = lerp_angle(float(o.ry), ry, min(1.0, dt * 6))
+		var ryf: float = o.ry; var fx := sin(ryf); var fz := cos(ryf); var m: Vector3 = o.m
+		var x: float = m.x + (p.v if o.zEks else p.u); var z: float = m.z + (p.u if o.zEks else p.v)
+		var geri := 0.31 if o.L == 3 else -0.16
+		for i in o.iz.size():
+			var iz: MeshInstance3D = o.iz[i]; var yon := -1.0 if i % 2 else 1.0; var Z2 := 2 * SURUM_Z; var uz := 0.0; var mu := 0.0
+			if s >= boy or (not o.ters and (i < p.sira or (i == p.sira and p.donus))) or (o.ters and i > p.sira): uz = Z2
+			elif i == p.sira and not p.donus:
+				uz = clamp(((1.0 - p.ic) if o.ters else p.ic) * Z2 - geri, 0.0, Z2)
+				mu = (yon * SURUM_Z - yon * uz / 2) if o.ters else (-yon * SURUM_Z + yon * uz / 2)
+			iz.visible = uz > 0.01; iz.scale.x = max(0.001, uz)
+			if o.zEks: iz.position.z = m.z + mu
+			else: iz.position.x = m.x + mu
+		var r: Dictionary = o.r
+		if o.has("tr"):
+			var tr: Node3D = o.tr; tr.position = Vector3(x, TOPRAK_Y + abs(sin(t * 25)) * 0.003, z); tr.rotation.y = ryf
+		else:
+			r.gr.position = Vector3(x, TOPRAK_Y, z); r.gr.rotation.y = ryf; r.ust.rotation.x = 0.3; r.kL.rotation.x = -0.9; r.kR.rotation.x = -0.9
+			var aa := sin(t * 5 + float(r.get("faz", 0))) * 0.5 if s < boy else 0.0
+			r.bL.rotation.x = aa; r.bR.rotation.x = -aa
+			var sb: Node3D = o.sb; sb.position = Vector3(x + fx * 0.16, TOPRAK_Y, z + fz * 0.16); sb.rotation.y = ryf
+# --- web bicerAdim: biçerdöveri olan köylü mesai saatinde olgun tarlayı kendisi biçer (üç gidiş-dönüş, 9 sn), ürün ambara
+var bicerler := {}
+var _benzinlik_var := false
+func bicer_adim(dt: float):
+	var kp_ = kayit_v.get("kp"); if not kp_ is Array: return
+	var h := oyun_saati(); var mesai := h >= 7.5 and h <= 19.5
+	var t := Time.get_ticks_msec() * 0.001
+	for i in bicerler.keys():
+		if i >= kp_.size() or not kp_[i] is Dictionary or not kp_[i].get("bicer") or not _benzinlik_var: bicerler[i].gr.queue_free(); bicerler.erase(i)
+	if not _benzinlik_var: return
+	for i in min(kp_.size(), koyluler.size()):
+		var x = kp_[i]
+		if not x is Dictionary or not x.get("bicer"): continue
+		if not bicerler.has(i):
+			var gr := Node3D.new(); add_child(gr); var s := sahne_yukle("bicerdover")
+			if s: s.scale = Vector3.ONE * 0.55; s.rotation.y = PI; gr.add_child(s)
+			gr.visible = false; bicerler[i] = {"gr": gr, "is": null}
+		var c: Dictionary = bicerler[i]
+		if c.is == null and mesai and not koyluler[i].get("yasli", false):
+			for b in kayit_v["b"]:
+				if b["tip"] != "tarla" or b.get("insa") != null or ekin_asama(b) != 2: continue
+				var dolu := false
+				for o in bicerler.values():
+					if o.is != null and o.is.t == b: dolu = true
+				if dolu: continue
+				c.is = {"t": b, "f": 0.0, "m": bina_merkez(b)}; break
+		var gr: Node3D = c.gr
+		if c.is == null: gr.visible = false; continue
+		var tb: Dictionary = c.is.t
+		if not kayit_v["b"].has(tb) or ekin_asama(tb) != 2: c.is = null; gr.visible = false; continue
+		gr.visible = true
+		c.is.f += dt / 9.0; var f: float = c.is.f; var m: Vector3 = c.is.m
+		var sira: int = min(2, int(f * 3)); var u := fmod(f * 3, 1.0); var yon := -1.0 if sira % 2 else 1.0
+		var px: float = m.x + (sira - 1) * 0.3; var pz: float = m.z + yon * (u - 0.5) * 0.9
+		gr.position = Vector3(px, abs(sin(t * 30)) * 0.003, pz); gr.rotation.y = 0.0 if yon > 0 else PI
+		if f >= 1:
+			var tip: String = tb["ekin"]["tip"]; env_ekle(tip, 3); xp_ekle(float(VERI["urun"].get(tip, {}).get("xp", 0)) * 3)
+			tb["ekin"] = null; ekin_yenile(tb); ust_guncelle(); kayit_yaz_koy(); c.is = null; gr.visible = false
+			if _bt_on and _bt_ad == "bicer": print("BICER bitti ", tip)
+		elif _bt_on and _bt_ad == "bicer" and f < 0.5: hedef = gr.position; kamera_guncelle()
 # web'deki gibi çalışanın başında iş çubuğu (ekinin büyümesi)
 const CUBUK_W := 0.26
 var _cubuk_m: Array = []
@@ -1754,6 +1954,8 @@ func bina_kaldir_dunya(b: Dictionary):
 	if tarla_kap.has(id): tarla_kap[id].queue_free(); tarla_kap.erase(id); tarla_as.erase(id)
 	for k in tarlacilar.duplicate():
 		if k.get("b") == b: k.gr.queue_free(); tarlacilar.erase(k)
+	for o in makineler.duplicate():
+		if o.b == b: o.kap.queue_free(); makineler.erase(o)
 func bina_ciz_tek(b: Dictionary):
 	var tip: String = b["tip"]; var m := bina_merkez(b)
 	var model := tip
@@ -2376,18 +2578,21 @@ func tarim_durum() -> Dictionary:
 		elif int(x.get("alet", 0) if x.get("alet") != null else 0) >= 2: pulluk += 1
 		elif int(x.get("alet", 0) if x.get("alet") != null else 0) == 1: saban += 1
 	var tl: Array = kayit_v["b"].filter(func(b): return b["tip"] == "tarla" and b.get("insa") == null)
+	tl.sort_custom(func(p, q): return int(p["x"]) < int(q["x"]) or (int(p["x"]) == int(q["x"]) and int(p["z"]) < int(q["z"])))
+	var kademe := {}
 	var koop := bina_var("kooperatif"); var kt := traktor * 4; var kpu := pulluk * 2; var ks := saban * 2; var simdi_ := 0
 	for b in tl:
 		var L := 0
 		if kt > 0: kt -= 1; L = 3
 		elif kpu > 0: kpu -= 1; L = 2
 		elif ks > 0: ks -= 1; L = 1
+		kademe[int(b["id"])] = L
 		simdi_ += min(3, TARIM_KISI[L] + (1 if koop and L > 0 else 0))
 	var elle := tl.size() * 3; var serbest := elle - simdi_; var sanayi := 0
 	for b in kayit_v["b"]:
 		if SANAYI_IS.has(b["tip"]) and b.get("insa") == null: sanayi += int(SANAYI_IS[b["tip"]]) * int(b.get("lv", 1))
 	var fab: int = min(serbest, sanayi)
-	var v := {"elle": elle, "simdi": simdi_, "serbest": serbest, "fabrikada": fab, "issiz": serbest - fab, "koop": koop}
+	var v := {"elle": elle, "simdi": simdi_, "serbest": serbest, "fabrikada": fab, "issiz": serbest - fab, "koop": koop, "kademe": kademe}
 	_tarim_c = {"t": sn, "v": v}; return v
 func sanayi_denge() -> Dictionary:
 	var atolye := 0
@@ -4478,7 +4683,7 @@ func _process(dt):
 	if _isik_say <= 0:
 		gun_isigi(); _isik_say = 1.0; saat_guncelle()
 		if not kayit_v.is_empty():
-			koylu_ayarla(); yokken_gecen(); isci_rapor(); dayi_adim(); koylu_kazanc(1.0); olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
+			koylu_ayarla(); yokken_gecen(); isci_rapor(); dayi_adim(); koylu_kazanc(1.0); _atcilik_var = bina_var("atcilik"); _benzinlik_var = bina_var("benzinlik") or _bt_on; olay_adim(); gazete_adim(); kayip_hayvan_adim(); tarlaci_yenile(); _halk_say += 1; insaatci_ata(); oduncu_ata(); kutuk_adim(); mevsim_adim(); rehber_guncelle(); insa_adim(1.0); cubuk_guncelle(); siparis_adim(); pasif_adim(1.0); ust_guncelle(); _oto_say += 1
 			if _halk_say % 2 == 0: halk_adim(); olum_kontrol(); asker_dugun_adim(); secim_adim()
 			etkinlik_adim()
 			if _halk_say == 4 and "--hedefac" in OS.get_cmdline_user_args() and _modal == null: hedef_ac()
@@ -4515,7 +4720,7 @@ func _process(dt):
 			d.rotation.y = lerp_angle(d.rotation.y, atan2(fark.x, fark.z), dt * 4)
 		else:
 			h.h = Vector3(randf_range(-0.55, 0.55), 0.04, randf_range(-0.1, 0.9)); h.bekle = 1.5 + randf() * 4
-	koylu_adim(dt); tarlaci_adim(dt); yagis_adim(dt)
+	koylu_adim(dt); tarlaci_adim(dt); makine_adim(dt); bicer_adim(dt); yagis_adim(dt)
 	kare += 1
 	if kare == 8 and insa_arg != "": yerlestir_basla(insa_arg)
 	if kare == 12 and dokun_arg.x >= 0: dokunma_sec(dokun_arg)
