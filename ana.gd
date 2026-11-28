@@ -197,6 +197,7 @@ func web_kaydi_ciz(ad: String):
 		if tip == "cami": pass  # camiye dokunma: olduğu gibi çiz
 		var model := tip
 		if tip == "ev" and kasaba: model = "evsehir" if v.get("sehir", false) == true else "evkasaba"
+		if tip == "mezarlik2": model = "mezarlik"
 		if tip in ["lamba", "teras"]:
 			var bx: int = BOY.get(tip, 1)
 			proc_bina(tip, Vector3(b["x"] + bx / 2.0 - YARI, 0, b["z"] + bx / 2.0 - YARI), int(b.get("rot", 0)))
@@ -213,7 +214,7 @@ func web_kaydi_ciz(ad: String):
 	yol_ciz(serit, t, kasaba)
 	hale_kur()
 	koylu_koy(serit, 0)
-	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("hasar_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
+	call_deferred("hazirla_hepsi"); call_deferred("kutuk_ciz"); call_deferred("isaret_ciz"); call_deferred("hasar_ciz"); call_deferred("mezar_ciz"); call_deferred("oto_topla"); call_deferred("cubuk_guncelle")
 	tarlaci_koy(v["b"], 32)
 	dag_kur(t)
 	web_orman(t)
@@ -1467,6 +1468,7 @@ func bina_ciz_tek(b: Dictionary):
 	var tip: String = b["tip"]; var m := bina_merkez(b)
 	var model := tip
 	if tip == "ev" and kasaba_mi(): model = "evsehir" if sehir_mi() else "evkasaba"
+	if tip == "mezarlik2": model = "mezarlik"
 	if not FileAccess.file_exists("res://modeller/%s.glb" % model): return
 	bina_koy_dunya(model, m, int(b.get("rot", 0)), int(b["id"])); bina_gorunum(b)
 	if b.get("insa") != null and int(b["insa"].get("hedef", 1)) == 1: return
@@ -3106,10 +3108,50 @@ func olum_kontrol():
 	kayit_v["kayip"] = int(kayit_v.get("kayip", 0) if kayit_v.get("kayip") != null else 0) + 1; kayit_v["sonOlum"] = bugun
 	hesapla(); kayit_yaz_koy()
 	modal_ac("Vefat haberi", ["Köyümüzden %s Hakk'ın rahmetine kavuştu." % ad, "Cenazesi bugün öğle namazından sonra kaldırılacak. Bütün köy mezarlıkta toplanıp defnedecek." if mez else "Köyde mezarlık yok! Defin için Mezarlık kurmalısın."], [["Allah rahmet eylesin", func(): pass]])
+# mezar taşları (web mezarTaslari/MEZAR_YER): her mezarlık bölümünde 4×3 mezar; dolunca yanına yeni bölüm açılır (mezarYeriAc)
+var MEZAR_YER := []
+func mezar_ciz():
+	if MEZAR_YER.is_empty():
+		for z in 3:
+			for x in 4: MEZAR_YER.append(Vector2(-0.6 + x * 0.4, -0.5 + z * 0.42))
+	var n_top: int = (kayit_v.get("mezarlar", []) as Array).size()
+	for b in kayit_v["b"]:
+		if not b["tip"] in ["mezarlik", "mezarlik2"] or b.get("insa") != null: continue
+		var d = bina_dugum.get(int(b["id"]))
+		if d == null or not is_instance_valid(d["kok"]): continue
+		var eski = d["kok"].get_node_or_null("mezarlar")
+		if eski: eski.queue_free()
+		var g := Node3D.new(); g.name = "mezarlar"; d["kok"].add_child(g)
+		var bas := int(b.get("ekNo", 0)) * MEZAR_YER.size(); var n: int = clamp(n_top - bas, 0, MEZAR_YER.size())
+		for k in n:
+			var m := sahne_yukle("mezar")
+			if m == null: break
+			m.scale = Vector3.ONE * float(OLCEK.get("mezar", 0.33)); m.position = Vector3(MEZAR_YER[k].x, 0.03, MEZAR_YER[k].y); g.add_child(m)
+func mezar_yeri_ac():
+	var mez = null
+	for b in kayit_v["b"]:
+		if b["tip"] == "mezarlik" and b.get("insa") == null: mez = b; break
+	if mez == null: return
+	var ekler: Array = kayit_v["b"].filter(func(b): return b["tip"] == "mezarlik2")
+	if (kayit_v.get("mezarlar", []) as Array).size() < MEZAR_YER.size() * (1 + ekler.size()): return
+	for t in [mez] + ekler:
+		for o in [[2, 0], [-2, 0], [0, -2], [0, 2]]:
+			var x: int = int(t["x"]) + o[0]; var z: int = int(t["z"]) + o[1]; var bos := true
+			for dz in 2:
+				for dx in 2:
+					var xx := x + dx; var zz := z + dz
+					if xx < 0 or zz < 0 or xx >= WN or zz >= WN or karo_bina.has(zz * WN + xx) or int(arazi_t[zz * WN + xx]) != 1 or yol_serit.has(zz * WN + xx): bos = false
+			if not bos: continue
+			var yid := 1
+			for q in kayit_v["b"]: yid = max(yid, int(q["id"]) + 1)
+			var yb := {"id": yid, "tip": "mezarlik2", "x": x, "z": z, "rot": int(mez.get("rot", 0)), "lv": 1, "insa": null, "ekNo": ekler.size() + 1}
+			kayit_v["b"].append(yb); karo_isle(yb, true); bina_ciz_tek(yb); gazete("Mezarlık doldu, yanına yeni bir bölüm açıldı."); kayit_yaz_koy(); return
+	bildir("Mezarlık doldu! Yanında 2×2 boş yer aç ki genişleyebilsin.")
 func cenaze_bitir():
 	var c: Dictionary = kayit_v["cenaze"]
 	if bina_var("mezarlik"): gazete("Lokmacı Samet, %s için mezarlığın önünde hayır lokması dağıttı. Allah rahmet eylesin." % c["ad"])
 	kayit_v["mezarlar"].append({"ad": c["ad"], "gun": c["gun"]}); kayit_v.erase("cenaze"); kayit_yaz_koy()
+	mezar_yeri_ac(); mezar_ciz()
 func ozel_planla(o: Dictionary):
 	o["gun"] = gun_no() + (0 if oyun_saati() < OZEL_BAS_S - 0.2 else 1); kayit_v["ozel"] = o; kayit_yaz_koy()
 func ozel_bitti():
